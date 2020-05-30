@@ -1,0 +1,25 @@
+// See https://antongerdelan.net/opengl/compute.html
+// and https://jonathansteyfkens.com/blog/rust/2018/08/19/compute-shaders.html
+// for compute shader info
+
+#version 450
+
+// Work group size (x, y, z) -- all three default to 1
+// x & y are 1 -> single pixel
+layout(local_size_x = 1, local_size_y = 1) in;
+
+// Output image format
+// `rgba32f` corresponds to a `vec4(r, g, b, a)`
+// `rgba8` ...
+layout(rgba8, binding = 0) uniform image2D img_output;
+
+
+void main() {
+    vec4 color = vec4(0., 0., 0., 1.);
+
+    // Global work group position (corresponds to current pixel in this case)
+    // `imageStore` expects an ivec2, hence the cast
+    ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+
+    imageStore(img_output, pixel_coords, color);
+}
