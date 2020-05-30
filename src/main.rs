@@ -21,5 +21,8 @@ mod texture;
 fn main() {
     let mut sys = futures::executor::block_on(system::System::new());
 
-    sys.run();
+    let test_texture = sys.create_texture_from_path("./res/tree.png");
+    let test_quad = sys.create_quad_full_screen(test_texture);
+
+    sys.run(test_quad);
 }

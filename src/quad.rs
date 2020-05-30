@@ -4,24 +4,23 @@ use crate::texture;
 
 pub struct Quad {
     /// Quad's vertices
-    vertex_buffer: Buffer,
+    pub vertex_buffer: Buffer,
     /// Quad's vertex indices
-    index_buffer: Buffer,
+    pub index_buffer: Buffer,
     /// Contains wgpu texture, view, and sampler
     texture: texture::Texture,
 
     /// Uniform bind group ready to be passed
-    bind_group: BindGroup,
-
+    pub bind_group: BindGroup,
 }
 
 impl Quad {
-    pub fn create_full_screen(device: &Device, texture: texture::Texture) -> Self {
+    pub fn create_full_screen(device: &Device, layout: &BindGroupLayout, texture: texture::Texture) -> Self {
         let vertices = [
-            QuadVertex::new((1.0, 1.0, 0.0), (1.0, 1.0)), // Top right
-            QuadVertex::new((1.0, 0.0, 0.0), (0.0, 1.0)), // Top left
-            QuadVertex::new((0.0, 0.0, 0.0), (0.0, 0.0)), // Bottom left
-            QuadVertex::new((1.0, 0.0, 0.0), (1.0, 0.0)), // Bottom right
+            QuadVertex::new(( 1.0,  1.0, 0.0), (1.0, 1.0)), // Top right
+            QuadVertex::new((-1.0,  1.0, 0.0), (0.0, 1.0)), // Top left
+            QuadVertex::new((-1.0, -1.0, 0.0), (0.0, 0.0)), // Bottom left
+            QuadVertex::new(( 1.0, -1.0, 0.0), (1.0, 0.0)), // Bottom right
         ];
 
         // 2x ccw triangle vertex indices
@@ -37,7 +36,7 @@ impl Quad {
             BufferUsage::INDEX,
         );
 
-        let bind_group = Self::bind_group(device, &texture);
+        let bind_group = Self::bind_group(device, layout, &texture);
 
         Self {
             vertex_buffer,
@@ -73,9 +72,9 @@ impl Quad {
         })
     }
 
-    pub fn bind_group(device: &Device, texture: &texture::Texture) -> BindGroup {
+    pub fn bind_group(device: &Device, layout: &BindGroupLayout, texture: &texture::Texture) -> BindGroup {
         device.create_bind_group(&BindGroupDescriptor {
-            layout: &Self::bind_group_layout(device),
+            layout,
             bindings: &[
                 // Texture
                 Binding {
@@ -93,12 +92,13 @@ impl Quad {
     }
 
     pub fn create_render_pipeline(device: &Device, 
+                                  layout: &BindGroupLayout,
                                   color_format: TextureFormat,
                                   depth_format: Option<TextureFormat>,
     ) -> RenderPipeline {
         let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             bind_group_layouts: &[
-                &Self::bind_group_layout(&device)
+                layout,
             ],
         });
 
