@@ -2,6 +2,7 @@
 
 layout(location = 0) in vec3 attr_position;
 layout(location = 1) in vec2 attr_tex_coord;
+// TODO: Translation/rotation matrix
 
 layout(location = 0) out vec2 v_tex_coord;
 

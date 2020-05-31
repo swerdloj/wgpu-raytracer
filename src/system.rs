@@ -1,9 +1,10 @@
-use sdl2::event::Event;
+use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 
 use wgpu::*;
 
-use crate::quad::Quad;
+use crate::quad::{Quad, QuadBuilder};
+use crate::raytrace::RayTracer;
 
 pub struct SDL2 {
     sdl2_context: sdl2::Sdl,
@@ -18,10 +19,6 @@ pub struct WGPU {
     queue: Queue,
     sc_desc: SwapChainDescriptor,
     swap_chain: SwapChain,
-
-    // TODO:
-    // quad_render_pipeline
-    // raytrace_compute_pipeline
 }
 
 pub struct System {
@@ -30,6 +27,8 @@ pub struct System {
 
     quad_bind_group_layout: BindGroupLayout,
     quad_render_pipeline: RenderPipeline,
+
+    raytracer: RayTracer,
 }
 
 impl System {
@@ -37,23 +36,24 @@ impl System {
         let sdl2 = Self::init_sdl2();
         let wgpu = Self::init_wgpu(&sdl2.window).await;
 
-
-        // TODO: Quad program for rendering texture
-        // let quad: Quad = todo!();
-
         // NOTE: bind_group_layouts MUST be SHARED. Creating the same one multiple times will cause errors.
         // Hence storing this in System.
         let quad_bind_group_layout = Quad::bind_group_layout(&wgpu.device);
         let quad_render_pipeline = Quad::create_render_pipeline(&wgpu.device, &quad_bind_group_layout, wgpu.sc_desc.format, None);
 
 
-        // TODO: Compute program that writes to texture
+        let raytracer = RayTracer::new(&wgpu.device, (800, 600));
+
+        // TODO: This works, but still need to implement a means of displaying result
+        // raytracer.dispatch_compute(&wgpu.device, &wgpu.queue);
         
         Self {
             sdl2,
             wgpu,
             quad_bind_group_layout,
             quad_render_pipeline,
+
+            raytracer,
         }
     }
 
@@ -127,7 +127,7 @@ impl System {
                     load_op: LoadOp::Clear,
                     store_op: StoreOp::Store,
                     clear_color: Color {
-                        r: 0.3, g: 0.1, b: 0.2, a: 1.0,
+                        r: 0.1, g: 0.05, b: 0.1, a: 1.0,
                     },
                 },
             ],
@@ -143,10 +143,16 @@ impl System {
         render_pass.draw_indexed(0..6, 0, 0..1);
 
         drop(render_pass);
-
         self.wgpu.queue.submit(&[
             encoder.finish()
         ]);
+    }
+
+    fn resize(&mut self, width: u32, height: u32) {
+        self.wgpu.sc_desc.width = width as u32;
+        self.wgpu.sc_desc.height = height as u32;
+
+        self.wgpu.swap_chain = self.wgpu.device.create_swap_chain(&self.wgpu.render_surface, &self.wgpu.sc_desc);
     }
 
     // TODO: Move this to `Application` struct which handles application state as well
@@ -161,6 +167,10 @@ impl System {
                         break 'run;
                     }
 
+                    Event::Window { win_event: WindowEvent::Resized(width, height), .. } => {
+                        self.resize(width as u32, height as u32);
+                    } 
+
                     _ => {}
                 }
             }
@@ -170,17 +180,29 @@ impl System {
     }
 
     pub fn create_texture_from_path<P: AsRef<std::path::Path>>(&self, path: P) -> crate::texture::Texture {
-        let (texture, commands) = crate::texture::Texture::from_image_path(&self.wgpu.device, path).unwrap();
+        // Flip textures for OpenGL coordinate system
+        let (texture, commands) = crate::texture::Texture::from_image_path(&self.wgpu.device, path, true).unwrap();
         self.wgpu.queue.submit(&[commands]);
 
         texture
-    }
+    }   
+}
 
-    pub fn create_quad_full_screen(&self, texture: crate::texture::Texture) -> Quad {
-        Quad::create_full_screen(
+impl QuadBuilder for System {
+    fn create_quad_full_screen(&self, texture: crate::texture::Texture) -> Quad {
+        Quad::new_full_screen(
             &self.wgpu.device, 
             &self.quad_bind_group_layout,
             texture,
+        )
+    }
+
+    fn create_quad(&self, texture: crate::texture::Texture) -> Quad {
+        Quad::new(
+            &self.wgpu.device, 
+            &self.quad_bind_group_layout, 
+            texture, 
+            None
         )
     }
 }

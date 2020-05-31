@@ -4,11 +4,20 @@ pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
+
+    pub image_dimensions: Option<(u32, u32)>,
 }
 
 impl Texture {
-    pub fn from_image_path<P: AsRef<std::path::Path>>(device: &wgpu::Device, path: P) -> Result<(Self, wgpu::CommandBuffer), String> {
-        let img = image::open(path.as_ref()).map_err(|e| e.to_string())?;
+    pub fn from_image_path<P: AsRef<std::path::Path>>(device: &wgpu::Device, path: P, flip: bool) -> Result<(Self, wgpu::CommandBuffer), String> {
+        let mut img = image::open(path.as_ref()).map_err(|e| e.to_string())?;
+
+        // OpenGL coordinate system causes images to be upside when viewed as quads.
+        // This is not needed for general use (like texturing an object) ??
+        if flip {
+            img = img.flipv();
+        }
+
         let img_rgba = img.to_rgba();
         let dimensions = img.dimensions();
 
@@ -75,6 +84,14 @@ impl Texture {
             compare: wgpu::CompareFunction::Always,
         });
 
-        Ok((Self { texture, view, sampler }, command_buffer))
+        Ok(( 
+            Self { 
+                texture, 
+                view, 
+                sampler ,
+                image_dimensions: Some(dimensions),
+            }, 
+            command_buffer 
+        ))
     }
 }

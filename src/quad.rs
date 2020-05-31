@@ -2,6 +2,7 @@ use wgpu::*;
 
 use crate::texture;
 
+/// Note that quads are not translated or rotated by default
 pub struct Quad {
     /// Quad's vertices
     pub vertex_buffer: Buffer,
@@ -14,8 +15,44 @@ pub struct Quad {
     pub bind_group: BindGroup,
 }
 
+/// Functions end-user will use to build quads.
+/// User should not be responsible for handling device, layout, etc.
+pub trait QuadBuilder {
+    fn create_quad_full_screen(&self, texture: texture::Texture) -> Quad;
+    fn create_quad(&self, texture: texture::Texture) -> Quad;
+}
+
 impl Quad {
-    pub fn create_full_screen(device: &Device, layout: &BindGroupLayout, texture: texture::Texture) -> Self {
+    // TODO: Create quad with specified pixel dimensions/location
+    // TODO: Need to accont for window dimensions/aspect ratio
+
+    /// Creates quad sized according to the texture's dimensions
+    pub fn new(device: &Device, layout: &BindGroupLayout, texture: texture::Texture, size: Option<(u32, u32)>) -> Self {
+        let mut x = 1.0;
+        let mut y = 1.0;
+
+        
+        if let Some((width, height)) = texture.image_dimensions {
+            let aspect_ratio = width as f32 / height as f32;
+            if width > height {
+                y = 1.0 / aspect_ratio;
+            } else {
+                x = 1.0 * aspect_ratio;
+            }
+        }
+        
+
+        let vertices = [
+            QuadVertex::new(( x,  y, 0.0), (1.0, 1.0)), // Top right
+            QuadVertex::new((-x,  y, 0.0), (0.0, 1.0)), // Top left
+            QuadVertex::new((-x, -y, 0.0), (0.0, 0.0)), // Bottom left
+            QuadVertex::new(( x, -y, 0.0), (1.0, 0.0)), // Bottom right
+        ];
+
+        Self::create(device, layout, texture, vertices)
+    }
+
+    pub fn new_full_screen(device: &Device, layout: &BindGroupLayout, texture: texture::Texture) -> Self {
         let vertices = [
             QuadVertex::new(( 1.0,  1.0, 0.0), (1.0, 1.0)), // Top right
             QuadVertex::new((-1.0,  1.0, 0.0), (0.0, 1.0)), // Top left
@@ -23,6 +60,10 @@ impl Quad {
             QuadVertex::new(( 1.0, -1.0, 0.0), (1.0, 0.0)), // Bottom right
         ];
 
+        Self::create(device, layout, texture, vertices)
+    }
+
+    fn create(device: &Device, layout: &BindGroupLayout, texture: texture::Texture, vertices: [QuadVertex; 4]) -> Self {
         // 2x ccw triangle vertex indices
         let indices = [0u32, 1, 2, 0, 2, 3]; // (topR -> topL, botL), (topR, botL, botR)
 
@@ -46,6 +87,9 @@ impl Quad {
         }
     }
 
+    /// NOTE: This must be saved for ALL use cases after being created
+    ///
+    /// All quads must use the same instance of this layout
     pub fn bind_group_layout(device: &Device) -> BindGroupLayout {
         device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             bindings: &[
@@ -72,6 +116,7 @@ impl Quad {
         })
     }
 
+    /// Unlike layouts, the `bind_group` is unique to each object (but linked to the layout)
     pub fn bind_group(device: &Device, layout: &BindGroupLayout, texture: &texture::Texture) -> BindGroup {
         device.create_bind_group(&BindGroupDescriptor {
             layout,

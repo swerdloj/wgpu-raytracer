@@ -14,15 +14,19 @@ macro_rules! size_of {
 }
 
 mod system;
-pub mod quad;
+mod quad;
 mod texture;
+mod raytrace;
+
+use quad::QuadBuilder;
 
 
 fn main() {
     let mut sys = futures::executor::block_on(system::System::new());
 
-    let test_texture = sys.create_texture_from_path("./res/tree.png");
-    let test_quad = sys.create_quad_full_screen(test_texture);
+    // let test_texture = sys.create_texture_from_path("./res/aspect_ratio_rotated.png");
+    let test_texture = sys.create_texture_from_path("./res/aspect_ratio.png");
+    let test_quad = sys.create_quad(test_texture);
 
     sys.run(test_quad);
 }
