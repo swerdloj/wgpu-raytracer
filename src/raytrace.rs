@@ -6,7 +6,7 @@ use crate::texture;
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Uniforms {
-    focal_length: f32,
+    sample_number: u32,
     // _padding1: [u32; 3],
     samples_per_pixel: u32,
     // _padding2: [u32; 3],
@@ -21,6 +21,7 @@ pub struct RayTracer {
     texture_bind_group: BindGroup,
 
     uniforms: Uniforms,
+    uniform_buffer: Buffer,
     uniform_bind_group: BindGroup,
 
     pipeline: ComputePipeline,
@@ -29,10 +30,24 @@ pub struct RayTracer {
 }
 
 impl RayTracer {
-    pub fn dispatch_compute(&self, device: &Device, queue: &Queue) {
+    pub fn dispatch_compute(&mut self, device: &Device, queue: &Queue) {
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("compute_encoder"),
         });
+
+        self.uniforms.sample_number += 1;
+
+        let staging_buffer = device.create_buffer_with_data(
+            bytemuck::cast_slice(&[self.uniforms]), 
+            BufferUsage::COPY_SRC
+        );
+
+        encoder.copy_buffer_to_buffer(
+                 &staging_buffer, 0, 
+            &self.uniform_buffer, 0, 
+              size_of!(Uniforms) as _,
+        );
+
 
         let mut compute_pass = encoder.begin_compute_pass();
 
@@ -101,16 +116,16 @@ impl RayTracer {
         });
 
         let uniforms = Uniforms {
-            focal_length: 1.,
+            sample_number: 0,
             // _padding1: [0u32; 3],
-            samples_per_pixel: 100,
+            samples_per_pixel: 10,
             // _padding2: [0u32; 3],
-            max_ray_bounces: 50,
+            max_ray_bounces: 5,
         };
 
         let uniform_buffer = device.create_buffer_with_data(
             bytemuck::cast_slice(&[uniforms]), 
-            BufferUsage::UNIFORM,
+            BufferUsage::UNIFORM | BufferUsage::COPY_DST,
         );
 
         let uniform_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -164,6 +179,7 @@ impl RayTracer {
             texture_bind_group, 
 
             uniforms,
+            uniform_buffer,
             uniform_bind_group,
 
             pipeline: compute_pipeline,

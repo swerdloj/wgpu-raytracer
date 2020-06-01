@@ -43,7 +43,7 @@ impl System {
         let quad_render_pipeline = Quad::create_render_pipeline(&wgpu.device, &quad_bind_group_layout, wgpu.sc_desc.format, None);
 
         let raytracer = RayTracer::new(&wgpu.device, &quad_bind_group_layout, (width, height));
-        raytracer.dispatch_compute(&wgpu.device, &wgpu.queue);
+        // raytracer.dispatch_compute(&wgpu.device, &wgpu.queue);
         
         (Self {
             sdl2,
@@ -154,14 +154,23 @@ impl System {
     }
 
     // TODO: Move this to `Application` struct which handles application state as well
-    pub fn run(&mut self, /*quad: Quad,*/ raytracer: RayTracer) {
+    pub fn run(&mut self, mut raytracer: RayTracer) {
         let mut event_pump = self.sdl2.sdl2_context.event_pump().unwrap();
 
-        // let mut render_raytraced_texture = false;
+        let mut stop_rendering = false;
 
-        // self.wgpu.device.poll(Maintain::Wait);
+        // TODO: Rather than loading/storing to an image buffer,
+        //       use an SSBO. This can sum color over time, allowing
+        //       a fragment shader to simply divide total color by num_samples
+        //       to get a better average.
+        // TODO: Would this be faster too??
 
-        'run: loop {            
+        'run: loop {
+            if !stop_rendering {
+                raytracer.dispatch_compute(&self.wgpu.device, &self.wgpu.queue);
+                self.wgpu.device.poll(Maintain::Wait);
+            }
+
             for event in event_pump.poll_iter() {
                 match event {
                     Event::KeyDown { keycode: Some(Keycode::Escape), .. }
@@ -174,7 +183,7 @@ impl System {
                     } 
 
                     Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
-                        // render_raytraced_texture = !render_raytraced_texture;
+                        stop_rendering = !stop_rendering;
                     }
 
                     _ => {}
@@ -182,11 +191,6 @@ impl System {
             }
             
             self.render(&raytracer.quad_with_texture);
-            // if render_raytraced_texture {
-            //     self.render(&raytracer.quad_with_texture);
-            // } else {
-            //     self.render(&quad);
-            // }
         }
     }
 
