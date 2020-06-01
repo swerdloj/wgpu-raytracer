@@ -22,11 +22,11 @@ use quad::QuadBuilder;
 
 
 fn main() {
-    let mut sys = futures::executor::block_on(system::System::new());
+    let (mut system, raytracer) = futures::executor::block_on(system::System::new(1920, 1080));
 
     // let test_texture = sys.create_texture_from_path("./res/aspect_ratio_rotated.png");
-    let test_texture = sys.create_texture_from_path("./res/aspect_ratio.png");
-    let test_quad = sys.create_quad(test_texture);
+    // let test_texture = system.create_texture_from_path("./res/aspect_ratio.png");
+    // let test_quad = system.create_quad(test_texture);
 
-    sys.run(test_quad);
+    system.run(raytracer);
 }

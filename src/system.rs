@@ -28,12 +28,13 @@ pub struct System {
     quad_bind_group_layout: BindGroupLayout,
     quad_render_pipeline: RenderPipeline,
 
-    raytracer: RayTracer,
+    // raytracer: RayTracer,
 }
 
 impl System {
-    pub async fn new() -> Self {
-        let sdl2 = Self::init_sdl2();
+    // TODO: Need some way to use RayTracer and render it properly without & vs &mut issues in `run`
+    pub async fn new(width: u32, height: u32) -> (Self, RayTracer) {
+        let sdl2 = Self::init_sdl2(width, height);
         let wgpu = Self::init_wgpu(&sdl2.window).await;
 
         // NOTE: bind_group_layouts MUST be SHARED. Creating the same one multiple times will cause errors.
@@ -41,28 +42,25 @@ impl System {
         let quad_bind_group_layout = Quad::bind_group_layout(&wgpu.device);
         let quad_render_pipeline = Quad::create_render_pipeline(&wgpu.device, &quad_bind_group_layout, wgpu.sc_desc.format, None);
 
-
-        let raytracer = RayTracer::new(&wgpu.device, (800, 600));
-
-        // TODO: This works, but still need to implement a means of displaying result
-        // raytracer.dispatch_compute(&wgpu.device, &wgpu.queue);
+        let raytracer = RayTracer::new(&wgpu.device, &quad_bind_group_layout, (width, height));
+        raytracer.dispatch_compute(&wgpu.device, &wgpu.queue);
         
-        Self {
+        (Self {
             sdl2,
             wgpu,
             quad_bind_group_layout,
             quad_render_pipeline,
 
-            raytracer,
-        }
+            // raytracer,
+        }, raytracer)
     }
 
-    fn init_sdl2() -> SDL2 {
+    fn init_sdl2(width: u32, height: u32) -> SDL2 {
         let sdl2_context = sdl2::init().unwrap();
     
         let video = sdl2_context.video().unwrap();
     
-        let window = video.window("Raytracing", 800, 600)
+        let window = video.window("Raytracing", width, height)
             .position_centered()
             .resizable()
             .build()
@@ -156,8 +154,12 @@ impl System {
     }
 
     // TODO: Move this to `Application` struct which handles application state as well
-    pub fn run(&mut self, quad: Quad) {
+    pub fn run(&mut self, /*quad: Quad,*/ raytracer: RayTracer) {
         let mut event_pump = self.sdl2.sdl2_context.event_pump().unwrap();
+
+        // let mut render_raytraced_texture = false;
+
+        // self.wgpu.device.poll(Maintain::Wait);
 
         'run: loop {            
             for event in event_pump.poll_iter() {
@@ -171,11 +173,20 @@ impl System {
                         self.resize(width as u32, height as u32);
                     } 
 
+                    Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
+                        // render_raytraced_texture = !render_raytraced_texture;
+                    }
+
                     _ => {}
                 }
             }
-
-            self.render(&quad);
+            
+            self.render(&raytracer.quad_with_texture);
+            // if render_raytraced_texture {
+            //     self.render(&raytracer.quad_with_texture);
+            // } else {
+            //     self.render(&quad);
+            // }
         }
     }
 

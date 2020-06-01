@@ -1,8 +1,28 @@
 use wgpu::*;
 
+use crate::quad::Quad;
+use crate::texture;
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct Uniforms {
+    focal_length: f32,
+    // _padding1: [u32; 3],
+    samples_per_pixel: u32,
+    // _padding2: [u32; 3],
+    max_ray_bounces: u32,
+}
+unsafe impl bytemuck::Pod for Uniforms {}
+unsafe impl bytemuck::Zeroable for Uniforms {}
+
+
 pub struct RayTracer {
-    texture: Texture,
-    bind_group: BindGroup,
+    pub quad_with_texture: Quad,
+    texture_bind_group: BindGroup,
+
+    uniforms: Uniforms,
+    uniform_bind_group: BindGroup,
+
     pipeline: ComputePipeline,
 
     size: (u32, u32),
@@ -17,7 +37,8 @@ impl RayTracer {
         let mut compute_pass = encoder.begin_compute_pass();
 
         compute_pass.set_pipeline(&self.pipeline);
-        compute_pass.set_bind_group(0, &self.bind_group, &[]);
+        compute_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+        compute_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
         compute_pass.dispatch(self.size.0, self.size.1, 1);
 
         drop(compute_pass);
@@ -25,7 +46,7 @@ impl RayTracer {
     }
 
     // fn create_compute_pipeline(device: &Device, texture_size: (u32, u32)) -> Self {
-    pub fn new(device: &Device, texture_size: (u32, u32)) -> Self {
+    pub fn new(device: &Device, quad_bind_group_layout: &BindGroupLayout, texture_size: (u32, u32)) -> Self {
         let compute_src = include_str!("../shaders/raytrace/test.comp");
         let compute_spirv = glsl_to_spirv::compile(compute_src, glsl_to_spirv::ShaderType::Compute).unwrap();
         let compute_data = read_spirv(compute_spirv).unwrap();
@@ -46,13 +67,14 @@ impl RayTracer {
             sample_count: 1,
             dimension: TextureDimension::D2,
             format: TextureFormat::Rgba8UnormSrgb,
-            usage: TextureUsage::STORAGE,
+            usage: TextureUsage::SAMPLED | TextureUsage::STORAGE,
         });
 
         let texture_view = texture.create_default_view();
 
-        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        let texture_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             bindings: &[
+                // Storage texture
                 BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStage::COMPUTE,
@@ -62,25 +84,67 @@ impl RayTracer {
                         format: TextureFormat::Rgba8UnormSrgb,
                         readonly: false,
                     },
-                }
+                },
             ],
-            label: Some("compute_bind_group_layout"),
+            label: Some("compute_texture_bind_group_layout"),
         });
 
-        let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            layout: &bind_group_layout,
+        let texture_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
             bindings: &[
                 Binding {
                     binding: 0,
                     resource: BindingResource::TextureView(&texture_view),
                 },
             ],
-            label: Some("compute_bind_group"),
+            label: Some("compute_texture_bind_group"),
+        });
+
+        let uniforms = Uniforms {
+            focal_length: 1.,
+            // _padding1: [0u32; 3],
+            samples_per_pixel: 100,
+            // _padding2: [0u32; 3],
+            max_ray_bounces: 50,
+        };
+
+        let uniform_buffer = device.create_buffer_with_data(
+            bytemuck::cast_slice(&[uniforms]), 
+            BufferUsage::UNIFORM,
+        );
+
+        let uniform_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            bindings: &[
+                // Uniform buffer
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStage::COMPUTE,
+                    ty: BindingType::UniformBuffer {
+                        dynamic: false,
+                    },
+                },
+            ],
+            label: Some("compute_uniform_bind_group_layout"),
+        });
+
+        let uniform_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            layout: &uniform_bind_group_layout,
+            bindings: &[
+                Binding {
+                    binding: 0,
+                    resource: BindingResource::Buffer {
+                        buffer: &uniform_buffer,
+                        range: 0..size_of!(ref uniforms) as _,
+                    },
+                },
+            ],
+            label: Some("compute_uniform_bind_group"),
         });
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             bind_group_layouts: &[
-                &bind_group_layout,
+                &texture_bind_group_layout,
+                &uniform_bind_group_layout,
             ],
         });
 
@@ -92,9 +156,16 @@ impl RayTracer {
             },
         });
 
+        let quad_texture = texture::Texture::from_wgpu_texture(device, texture);
+        let quad = Quad::new(device, quad_bind_group_layout, quad_texture, Some(texture_size));
+
         Self {
-            texture, 
-            bind_group, 
+            quad_with_texture: quad, 
+            texture_bind_group, 
+
+            uniforms,
+            uniform_bind_group,
+
             pipeline: compute_pipeline,
             size: texture_size,
         }

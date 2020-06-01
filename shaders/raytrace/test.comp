@@ -8,18 +8,238 @@
 // x & y are 1 -> single pixel
 layout(local_size_x = 1, local_size_y = 1) in;
 
-// Output image format
-// `rgba32f` corresponds to a `vec4(r, g, b, a)`
-// `rgba8` ...
-layout(rgba8, binding = 0) uniform image2D img_output;
 
+// Output image format
+// `rgba32f` corresponds to `vec4(r, g, b, a)` 
+// `rbga` for Rgba8UnormSrgb target ??
+// TODO: How does the specified color here interact with the texture-declared color??
+layout(rgba8, set = 0, binding = 0) uniform image2D img_output;
+
+layout(set = 1, binding = 0)
+uniform Uniforms {
+    float focal_length;
+    uint samples_per_pixel;
+    uint max_ray_bounces;
+};
+
+
+const float PI = 3.141592;
+
+float rand_seed = 432.7;
+
+// Hash functions adapted from Dave_Hoskins: https://www.shadertoy.com/view/4djSRW
+// Random float between 0 and 0.999...
+float hash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * .1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+vec2 hash21(float p){
+	vec3 p3 = fract(vec3(p) * vec3(.1031, .1030, .0973));
+	p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx+p3.yz)*p3.zy);
+}
+
+vec2 hash22(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yzx+33.33);
+    return fract((p3.xx+p3.yz)*p3.zy);
+}
+
+vec3 hash31(float p) {
+   vec3 p3 = fract(vec3(p) * vec3(.1031, .1030, .0973));
+   p3 += dot(p3, p3.yzx+33.33);
+   return fract((p3.xxy+p3.yzz)*p3.zyx); 
+}
+
+vec2 hash20() {
+    vec2 rand = hash21(rand_seed);
+    rand_seed += rand.x + rand.y;
+
+    return rand;
+}
+
+vec3 hash30_range(float min, float max) {
+    // [0, 1)
+    vec3 rand = hash31(rand_seed); 
+
+    rand_seed += rand.x + rand.y + rand.z;
+
+    // [min, max)
+    return min + (max-min)*rand;
+}
+
+// FIXME: make a hash10_range function
+vec3 random_unit_vector() {
+    float a = hash30_range(0, 2*PI).x;
+    float z = hash30_range(-1, 1).y;
+    float r = sqrt(1 - z*z);
+
+    return vec3(r*cos(a), r*sin(a), z);
+}
+
+
+// BEGIN CAMERA (transpiled from sdf-lang ) //
+struct Camera {
+	vec3 position;
+	vec3 lookat;
+	float zoom;
+};
+
+vec3 Camera_ray_direction(in Camera self, vec2 uv) {
+	vec3 forward = normalize(self.lookat - self.position);
+	vec3 right = normalize(cross(vec3(0., 1., 0.), forward));
+	vec3 up = cross(forward, right);
+	return normalize(uv.x * right + uv.y * up + self.zoom * forward);
+}
+// END_CAMERA //
+
+
+// BEGIN RAY //
+struct HitRecord {
+    vec3 point;
+    vec3 normal;
+    float dist;
+    bool front_face;
+};
+
+struct Ray {
+    vec3 origin;
+    vec3 direction;
+};
+
+vec3 Ray_position(Ray ray, float dist) {
+    return ray.origin + dist * ray.direction;
+}
+
+void HitRecord_set_face_normal(inout HitRecord self, Ray ray, vec3 outward_normal) {
+    self.front_face = dot(ray.direction, outward_normal) < 0;
+    self.normal = self.front_face ? outward_normal : -outward_normal;
+}
+// END RAY //
+
+// Sphere collision using quadratic formula
+bool hit_sphere(vec3 center, float radius, Ray ray, float dist_min, float dist_max, inout HitRecord record) {
+    vec3 direction = ray.origin - center;
+
+    float a = dot(ray.direction, ray.direction);
+    float half_b = dot(direction, ray.direction);
+    float c = dot(direction, direction) - radius*radius;
+    float discriminant = half_b*half_b - a*c;
+
+    if (discriminant > 0.0) {
+        float root = sqrt(discriminant);
+        float temp = (-half_b - root) / a;
+
+        if (temp < dist_max && temp > dist_min) {
+            record.dist = temp;
+            record.point = Ray_position(ray, record.dist);
+            vec3 outward_normal = (record.point - center) / radius;
+            HitRecord_set_face_normal(record, ray, outward_normal);
+
+            return true;
+        }
+
+        temp = (-half_b + root) / a;
+        if (temp < dist_max && temp > dist_min) {
+            record.dist = temp;
+            record.point = Ray_position(ray, record.dist);
+            vec3 outward_normal = (record.point - center) / radius;
+            HitRecord_set_face_normal(record, ray, outward_normal);
+            return true;
+        }
+    }
+    return false;
+}
+
+// FIXME: Cap iterations?
+vec3 random_in_unit_sphere() {
+    while(true) {
+        vec3 p = hash30_range(-1, 1);
+        if (dot(p, p) < 1.0) {
+            return p;
+        }
+    }
+}
+
+bool scene(Ray ray, float dist_min, float dist_max, inout HitRecord record) {
+    HitRecord temp_record;
+    bool hit = false;
+    float closest = dist_max;
+
+    // --- C++ Version w/ List ---
+    // for (const auto& object : objects) {
+    //     if (object->hit(r, t_min, closest_so_far, temp_rec)) {
+    //         hit_anything = true;
+    //         closest_so_far = temp_rec.t;
+    //         rec = temp_rec;
+    //     }
+    // }
+
+    if (hit_sphere(vec3(0, 0, -1), 0.5, ray, dist_min, closest, temp_record)) {
+        hit = true;
+        closest = temp_record.dist;
+        record = temp_record;
+    }
+
+    if (hit_sphere(vec3(0, -100.5, -1), 100, ray, dist_min, closest, temp_record)) {
+        hit = true;
+        closest = temp_record.dist;
+        record = temp_record;
+    }
+
+    return hit;
+}
+
+vec3 invocation = vec3(gl_GlobalInvocationID);
+vec3 num_groups = vec3(gl_NumWorkGroups);
+
+vec3 fire_ray(Camera camera) {
+    vec2 uv = (2. * (invocation.xy + hash20()) - num_groups.xy) / num_groups.y;
+    // FIXME: uv is mirrored for some unknown reason (works fine without camera though ??)
+    uv.x *= -1;
+
+    Ray ray = Ray(camera.position, Camera_ray_direction(camera, uv));
+
+    HitRecord record;
+    uint depth = 0;
+
+    vec3 accumulator = vec3(0);
+    while (depth < max_ray_bounces) {
+        if (scene(ray, 0.001, 1000000, record)) {
+            vec3 target = record.point + record.normal + random_unit_vector();
+            ray = Ray(record.point, target - record.point);
+            depth += 1;
+        } else {
+            float t = 0.5 * (normalize(ray.direction).y + 1.);
+            accumulator += (1 - t)*vec3(1) + t*vec3(0.5, 0.7, 1.0);
+            break;
+        }
+    }
+
+    return accumulator * pow(0.5, depth);
+}
 
 void main() {
-    vec4 color = vec4(0., 0., 0., 1.);
+    // // uv on [-1, 1]
+    // vec2 uv = (invocation.xy / num_groups.xy - 0.5) * 2.;
+    // uv.x *= num_groups.x / num_groups.y;
+
+    Camera camera = Camera(vec3(0., 0, 0), vec3(0., 0., -1.), focal_length);
+
+    vec3 color = vec3(0);
+
+    for (uint s = 0; s < samples_per_pixel; ++s) {
+        color += fire_ray(camera);
+    }
+    color /= float(samples_per_pixel);
+
+    // Gamma & tone correction
+    color = smoothstep(0., 1., sqrt(color));
 
     // Global work group position (corresponds to current pixel in this case)
     // `imageStore` expects an ivec2, hence the cast
     ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
-
-    imageStore(img_output, pixel_coords, color);
+    imageStore(img_output, pixel_coords, vec4(color, 1.));
 }
