@@ -158,6 +158,7 @@ impl System {
         let mut event_pump = self.sdl2.sdl2_context.event_pump().unwrap();
 
         let mut stop_rendering = false;
+        let mut sample_count = 0;
 
         // TODO: Rather than loading/storing to an image buffer,
         //       use an SSBO. This can sum color over time, allowing
@@ -166,7 +167,8 @@ impl System {
         // TODO: Would this be faster too??
 
         'run: loop {
-            if !stop_rendering {
+            if !stop_rendering && sample_count != 25 {
+                sample_count += 1;
                 raytracer.dispatch_compute(&self.wgpu.device, &self.wgpu.queue);
                 self.wgpu.device.poll(Maintain::Wait);
             }
@@ -191,6 +193,8 @@ impl System {
             }
             
             self.render(&raytracer.quad_with_texture);
+
+            std::thread::sleep(std::time::Duration::new(0, 1_000_000 / 60));
         }
     }
 

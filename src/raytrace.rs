@@ -35,6 +35,16 @@ impl RayTracer {
             label: Some("compute_encoder"),
         });
 
+        let mut compute_pass = encoder.begin_compute_pass();
+
+        compute_pass.set_pipeline(&self.pipeline);
+        compute_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+        compute_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
+        compute_pass.dispatch(self.size.0, self.size.1, 1);
+
+        drop(compute_pass);
+
+        // Update sample number after the compute
         self.uniforms.sample_number += 1;
 
         let staging_buffer = device.create_buffer_with_data(
@@ -48,15 +58,6 @@ impl RayTracer {
               size_of!(Uniforms) as _,
         );
 
-
-        let mut compute_pass = encoder.begin_compute_pass();
-
-        compute_pass.set_pipeline(&self.pipeline);
-        compute_pass.set_bind_group(0, &self.texture_bind_group, &[]);
-        compute_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-        compute_pass.dispatch(self.size.0, self.size.1, 1);
-
-        drop(compute_pass);
         queue.submit(&[encoder.finish()]);
     }
 

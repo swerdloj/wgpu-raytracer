@@ -49,21 +49,20 @@ vec2 hash22(vec2 p) {
     p3 += dot(p3, p3.yzx+33.33);
     return fract((p3.xx+p3.yz)*p3.zy);
 }
-// vec3 hash32(vec2 p) {
-// 	vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
-//     p3 += dot(p3, p3.yxz+33.33);
+vec3 hash32(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yxz+33.33);
 
-//     return fract((p3.xxy+p3.yzz)*p3.zyx);
-// }
+    return fract((p3.xxy+p3.yzz)*p3.zyx);
+}
 
 // From https://medium.com/@jcowles/gpu-ray-tracing-in-one-weekend-3e7d874b3b0f
 float InterleavedGradientNoise(vec2 xy) {
     return fract(52.9829189 * fract(xy.x * 0.06711056 + xy.y * 0.00583715));
 }
 
-// From https://www.shadertoy.com/view/lssBD7
-// Random float between 0 and 0.999...
-float rand2D() {
+// Random float on [0, 1)
+float random() {
     rand_state.x = hash12(rand_state);
     rand_state.y = hash12(rand_state);
 
@@ -72,8 +71,9 @@ float rand2D() {
     // return InterleavedGradientNoise(rand_state * vec2(12.4, 39.8));
 }
 
+// Random float on [min, max)
 float rand_range(float min, float max) {
-    return min + (max - min) * rand2D();
+    return min + (max - min) * random();
 }
 
 vec3 random_unit_vector() {
@@ -86,8 +86,8 @@ vec3 random_unit_vector() {
 
 // From https://www.shadertoy.com/view/lssBD7
 vec3 random_in_unit_disk() {
-    float spx = 2.0 * rand2D() - 1.0;
-    float spy = 2.0 * rand2D() - 1.0;
+    float spx = 2.0 * random() - 1.0;
+    float spy = 2.0 * random() - 1.0;
 
     float r, phi;
 
@@ -122,9 +122,9 @@ vec3 random_in_unit_disk() {
 
 // From https://www.shadertoy.com/view/lssBD7
 vec3 random_in_unit_sphere() {
-    float phi = 2.0 * PI * rand2D();
-    float cosTheta = 2.0 * rand2D() - 1.0;
-    float u = rand2D();
+    float phi = 2.0 * PI * random();
+    float cosTheta = 2.0 * random() - 1.0;
+    float u = random();
 
     float theta = acos(cosTheta);
     float r = pow(u, 1.0 / 3.0);
@@ -264,7 +264,7 @@ bool Dielectric_scatter(Ray ray_in, HitRecord record, out vec3 attenuation, out 
     }
 
     float reflect_chance = schlick_approx(cos_theta, eta);
-    if (rand2D() < reflect_chance) {
+    if (random() < reflect_chance) {
         vec3 reflected = reflect(unit_direction, record.normal);
         scattered = Ray(record.point, reflected);
         return true;
@@ -275,8 +275,21 @@ bool Dielectric_scatter(Ray ray_in, HitRecord record, out vec3 attenuation, out 
     return true;
 }
 
-// END MATERIALS //
+bool Material_scatter(Ray ray, HitRecord record, inout vec3 attenuation, inout Ray scattered) {
+    if (record.material_type == LAMBERTIAN) {
+        return Lambertian_scatter(ray, record, attenuation, scattered);
+    }
+    if (record.material_type == METAL) {
+        return Metal_scatter(ray, record, attenuation, scattered);
+    }
+    if (record.material_type == DIELECTRIC) {
+        return Dielectric_scatter(ray, record, attenuation, scattered);
+    }
 
+    // Unreachable
+    return false;
+}
+// END MATERIALS //
 
 
 // BEGIN SHAPES //
@@ -332,29 +345,13 @@ bool Sphere_hit(Sphere sphere, Ray ray, float dist_min, float dist_max, inout Hi
     }
     return false;
 }
-
 // END SHAPES //
-
-bool Material_scatter(Ray ray, HitRecord record, inout vec3 attenuation, inout Ray scattered) {
-    if (record.material_type == LAMBERTIAN) {
-        return Lambertian_scatter(ray, record, attenuation, scattered);
-    }
-    if (record.material_type == METAL) {
-        return Metal_scatter(ray, record, attenuation, scattered);
-    }
-    if (record.material_type == DIELECTRIC) {
-        return Dielectric_scatter(ray, record, attenuation, scattered);
-    }
-
-    // Unreachable
-    return false;
-}
 
 bool scene(Ray ray, float dist_min, float dist_max, out HitRecord record) {
     const float GLASS_ETA = 1.5;
 
     Sphere sphere_small = Sphere(vec3(0, 0, -1), 0.5, LAMBERTIAN, vec3(0.1, 0.5, 0.2), 0, 0);
-    Sphere sphere_big   = Sphere(vec3(0, -100.5, -1), 100, LAMBERTIAN, vec3(0.8, 0.4, 0.1), 0, 0);
+    Sphere sphere_big   = Sphere(vec3(0, -100.5, -1), 100, LAMBERTIAN, vec3(0.2, 0.2, 0.8), 0, 0);
 
     Sphere lamb_1 = Sphere(vec3(0.7, 0.5, 0.5), 1, LAMBERTIAN, vec3(0.2, 0., 0.5), 0, 0);
 
@@ -417,7 +414,7 @@ vec3 fire_ray(Ray ray) {
 void main() {
     rand_state = (invocation.xy / num_groups.xy) + sample_number * 10.23;
 
-    vec3 position = vec3(-3.5, 3., 3);
+    vec3 position = vec3(-3.5, 2.5, 3);
     vec3 lookat = vec3(0, 0, -1);
     float focus_distance = length(position - lookat);
 
@@ -434,7 +431,7 @@ void main() {
     vec3 color = vec3(0);
 
     for (uint s = 0; s < samples_per_pixel; ++s) {
-        vec2 uv = ((invocation.xy + vec2(rand2D(), rand2D())) / num_groups.xy);
+        vec2 uv = ((invocation.xy + vec2(random(), random())) / num_groups.xy);
 
         color += fire_ray(Camera_get_ray(camera, uv));
     }
