@@ -77,7 +77,8 @@ impl System {
                 power_preference: PowerPreference::HighPerformance,
                 compatible_surface: Some(&render_surface),
             }, 
-            BackendBit::PRIMARY,
+            // Using Vulkan-style shaders
+            BackendBit::VULKAN,
         ).await
         .unwrap();
 
@@ -151,10 +152,31 @@ impl System {
 
         self.wgpu.swap_chain = self.wgpu.device.create_swap_chain(&self.wgpu.render_surface, &self.wgpu.sc_desc);
 
+        // This will trigger the sample count reset
         self.raytracer.resize(&self.wgpu.device, width, height)
     }
 
+    // TODO: Allow user to choose between borderless or normal
+    fn toggle_full_screen(&mut self) {
+        match self.sdl2.window.fullscreen_state() {
+            // Enable borderless
+            sdl2::video::FullscreenType::Off => {
+                self.sdl2.window.set_fullscreen(sdl2::video::FullscreenType::Desktop).unwrap();
+            }
+
+            // Disable fullscreen
+            sdl2::video::FullscreenType::Desktop
+            | sdl2::video::FullscreenType::True => {
+                self.sdl2.window.set_fullscreen(sdl2::video::FullscreenType::Off).unwrap();
+                
+                let (width, height) = self.sdl2.window.size();
+                self.resize(width, height);
+            }
+        }
+    }
+
     // TODO: Move this to `Application` struct which handles application state as well
+    // TODO: A lot of this can probably be simplified
     pub fn run(&mut self) {
         let mut event_pump = self.sdl2.sdl2_context.event_pump().unwrap();
 
@@ -203,6 +225,14 @@ impl System {
                         pause_rendering = !pause_rendering;
                         
                         println!("{} render", if pause_rendering {"Paused"} else {"Resuming"});
+                    }
+
+                    Event::KeyDown { keycode: Some(Keycode::F11), .. } => {                       
+                        println!("Toggle fullscreen");
+                        
+                        pause_rendering = false;
+                        target_reached = false;
+                        self.toggle_full_screen();
                     }
 
                     _ => {}

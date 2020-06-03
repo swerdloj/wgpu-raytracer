@@ -348,7 +348,6 @@ bool scene(Ray ray, float dist_min, float dist_max, out HitRecord record) {
 
 vec3 fire_ray(Ray ray) {
     HitRecord record;
-    uint depth = 0;
 
     Ray scattered;
     vec3 attenuation;

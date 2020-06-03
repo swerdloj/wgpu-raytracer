@@ -127,13 +127,11 @@ impl RayTracer {
     }
 
     pub fn new(device: &Device, width: u32, height: u32) -> Self {
-        let vert_src = include_str!("../shaders/raytrace/rt.vert");
-        let vert_spirv = glsl_to_spirv::compile(vert_src, glsl_to_spirv::ShaderType::Vertex).unwrap();
-        let vert_data = read_spirv(vert_spirv).unwrap();
+        let vert_spirv = include_bytes!("../shaders/raytrace/rt.vert.spv");
+        let vert_data = read_spirv(std::io::Cursor::new(vert_spirv.as_ref())).unwrap();
 
-        let frag_src = include_str!("../shaders/raytrace/rt.frag");
-        let frag_spirv = glsl_to_spirv::compile(frag_src, glsl_to_spirv::ShaderType::Fragment).unwrap();
-        let frag_data = read_spirv(frag_spirv).unwrap();
+        let frag_spirv = include_bytes!("../shaders/raytrace/rt.frag.spv");
+        let frag_data = read_spirv(std::io::Cursor::new(frag_spirv.as_ref())).unwrap();
 
         let vert_module = device.create_shader_module(&vert_data);
         let frag_module = device.create_shader_module(&frag_data);
