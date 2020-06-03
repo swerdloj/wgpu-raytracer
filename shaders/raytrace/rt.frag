@@ -1,32 +1,23 @@
-// See https://antongerdelan.net/opengl/compute.html
-// and https://jonathansteyfkens.com/blog/rust/2018/08/19/compute-shaders.html
-// for compute shader info
-
 #version 450
 
-// FIXME: https://community.khronos.org/t/compute-shaders-extremely-slow/7219/9
-// ^ This appears to be the cause of this shader's terrible performance
-
-// Work group size (x, y, z) -- all three default to 1
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-
-
 // Output image format
-// `rgba32f` corresponds to `vec4(r, g, b, a)` 
-// `rbga8` for Rgba8UnormSrgb target ??
-// TODO: How does the specified color here interact with the texture-declared color??
-layout(rgba16f, set = 0, binding = 0) uniform image2D img_output;
+layout(rgba32f, set = 0, binding = 0) uniform image2D img_output;
 
 layout(set = 1, binding = 0)
 uniform Uniforms {
+    vec2 window_size;
     uint sample_number;
     uint samples_per_pixel;
     uint max_ray_bounces;
 };
 
 
+layout(location = 0) out vec4 out_color;
+
+
 const float PI = 3.141592;
 const float MAX_FLOAT = 99999.99;
+
 
 // See Dave_Hoskins for more hashes: https://www.shadertoy.com/view/4djSRW
 float hash11(float p) {
@@ -40,11 +31,6 @@ float hash12(vec2 p) {
     p3 += dot(p3, p3.yzx + 33.33);
     return fract((p3.x + p3.y) * p3.z);
 }
-
-// From https://medium.com/@jcowles/gpu-ray-tracing-in-one-weekend-3e7d874b3b0f
-// float InterleavedGradientNoise(vec2 xy) {
-//     return fract(52.9829189 * fract(xy.x * 0.06711056 + xy.y * 0.00583715));
-// }
 
 // Random float on [0, 1)
 vec2 rand_state;
@@ -360,9 +346,6 @@ bool scene(Ray ray, float dist_min, float dist_max, out HitRecord record) {
     return hit;
 }
 
-vec3 invocation = vec3(gl_GlobalInvocationID);
-vec3 num_groups = vec3(gl_NumWorkGroups);
-
 vec3 fire_ray(Ray ray) {
     HitRecord record;
     uint depth = 0;
@@ -392,7 +375,7 @@ vec3 fire_ray(Ray ray) {
 }
 
 void main() {
-    rand_state = (invocation.xy / num_groups.xy) + sample_number * 10.23;
+    rand_state = (gl_FragCoord.xy / window_size) + sample_number * 14.23;
 
     vec3 position = vec3(-3.5, 2.5, 3);
     vec3 lookat = vec3(0, 0, -1);
@@ -402,8 +385,8 @@ void main() {
         position,                   // Position
         lookat,                     // Lookat
         vec3(0., 1., 0.),           // Up direction
-        120.,                       // Vertical field of view (degrees)
-        num_groups.x / num_groups.y,// Aspect ratio
+        100.,                       // Vertical field of view (degrees)
+        window_size.x/window_size.y,// Aspect ratio
         0.3,                        // Aperature size
         focus_distance              // Distance to focus
     );
@@ -411,23 +394,29 @@ void main() {
     vec3 color = vec3(0);
 
     for (uint s = 0; s < samples_per_pixel; ++s) {
-        vec2 uv = ((invocation.xy + vec2(random(), random())) / num_groups.xy);
+        vec2 uv = ((gl_FragCoord.xy + vec2(random(), random())) / window_size);
+        // FIXME: y is flipped in this implementation for some reason (compared to compute shader)
+        uv.y = 1 - uv.y;
 
         color += fire_ray(Camera_get_ray(camera, uv));
     }
     color /= float(samples_per_pixel);
 
     // Gamma correction & contrast adjustment
-    color = smoothstep(0., 1., sqrt(color));
+    // color = smoothstep(0., 1., sqrt(color));
 
     // Global work group position (corresponds to current pixel in this case)
     // `imageStore` expects an ivec2, hence the cast
-    ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 pixel_coords = ivec2(gl_FragCoord.xy);
 
     if (sample_number > 1) {
-        vec3 previous_color = imageLoad(img_output, pixel_coords).rgb;
-        color = mix(previous_color, color, 1. / (float(sample_number) + 1.));
+        color = clamp(vec3(0.), vec3(1.), color);
+        color += imageLoad(img_output, pixel_coords).rgb;
     }
 
-    imageStore(img_output, pixel_coords, vec4(color, 1.));
+    imageStore(img_output, pixel_coords, vec4(color, sample_number));
+    color /= sample_number;
+
+    color = smoothstep(0., 1., color);
+    out_color = vec4(color, 1.);
 }
