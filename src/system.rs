@@ -91,7 +91,7 @@ impl System {
         // For rendering outputs to screen
         let sc_desc = SwapChainDescriptor {
             usage: TextureUsage::OUTPUT_ATTACHMENT,
-            format: TextureFormat::Bgra8UnormSrgb,
+            format: TextureFormat::Bgra8Unorm,
             width: window_size.0,
             height: window_size.1,
             present_mode: PresentMode::Fifo,

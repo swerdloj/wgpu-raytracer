@@ -385,7 +385,7 @@ void main() {
         position,                   // Position
         lookat,                     // Lookat
         vec3(0., 1., 0.),           // Up direction
-        100.,                       // Vertical field of view (degrees)
+        120.,                       // Vertical field of view (degrees)
         window_size.x/window_size.y,// Aspect ratio
         0.3,                        // Aperature size
         focus_distance              // Distance to focus
@@ -417,6 +417,7 @@ void main() {
     imageStore(img_output, pixel_coords, vec4(color, sample_number));
     color /= sample_number;
 
+    color = sqrt(color);
     color = smoothstep(0., 1., color);
     out_color = vec4(color, 1.);
 }

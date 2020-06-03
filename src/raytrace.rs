@@ -228,7 +228,7 @@ impl RayTracer {
             primitive_topology: PrimitiveTopology::TriangleList,
             color_states: &[
                 ColorStateDescriptor {
-                    format: TextureFormat::Bgra8UnormSrgb,
+                    format: TextureFormat::Bgra8Unorm,
                     alpha_blend: BlendDescriptor::REPLACE,
                     color_blend: BlendDescriptor::REPLACE,
                     write_mask: ColorWrite::ALL,
