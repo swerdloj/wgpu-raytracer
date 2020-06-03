@@ -28,12 +28,12 @@ pub struct System {
     quad_bind_group_layout: BindGroupLayout,
     quad_render_pipeline: RenderPipeline,
 
-    // raytracer: RayTracer,
+    raytracer: RayTracer,
 }
 
 impl System {
     // TODO: Need some way to use RayTracer and render it properly without & vs &mut issues in `run`
-    pub async fn new(width: u32, height: u32) -> (Self, RayTracer) {
+    pub async fn new(width: u32, height: u32) -> Self {
         let sdl2 = Self::init_sdl2(width, height);
         let wgpu = Self::init_wgpu(&sdl2.window).await;
 
@@ -42,17 +42,16 @@ impl System {
         let quad_bind_group_layout = Quad::bind_group_layout(&wgpu.device);
         let quad_render_pipeline = Quad::create_render_pipeline(&wgpu.device, &quad_bind_group_layout, wgpu.sc_desc.format, None);
 
-        let raytracer = RayTracer::new(&wgpu.device, &quad_bind_group_layout, (width, height));
-        // raytracer.dispatch_compute(&wgpu.device, &wgpu.queue);
+        let raytracer = RayTracer::new(&wgpu.device, (width, height));
         
-        (Self {
+        Self {
             sdl2,
             wgpu,
             quad_bind_group_layout,
             quad_render_pipeline,
 
-            // raytracer,
-        }, raytracer)
+            raytracer,
+        }
     }
 
     fn init_sdl2(width: u32, height: u32) -> SDL2 {
@@ -151,26 +150,23 @@ impl System {
         self.wgpu.sc_desc.height = height as u32;
 
         self.wgpu.swap_chain = self.wgpu.device.create_swap_chain(&self.wgpu.render_surface, &self.wgpu.sc_desc);
+
+        self.raytracer.resize(&self.wgpu.device, width, height)
     }
 
     // TODO: Move this to `Application` struct which handles application state as well
-    pub fn run(&mut self, mut raytracer: RayTracer) {
+    pub fn run(&mut self) {
         let mut event_pump = self.sdl2.sdl2_context.event_pump().unwrap();
 
-        let mut stop_rendering = false;
-        let mut sample_count = 0;
+        let mut pause_rendering = false;
 
-        // TODO: Rather than loading/storing to an image buffer,
-        //       use an SSBO. This can sum color over time, allowing
-        //       a fragment shader to simply divide total color by num_samples
-        //       to get a better average.
-        // TODO: Would this be faster too??
+        // FIXME: Why are there random black pixels appearing after a while??
+        // ^ Adding a `clamp(0, 1, color) fixed it -- (Leaving this comment here until I understand the actual issue)
 
         'run: loop {
-            if !stop_rendering && sample_count != 25 {
-                sample_count += 1;
-                raytracer.dispatch_compute(&self.wgpu.device, &self.wgpu.queue);
-                self.wgpu.device.poll(Maintain::Wait);
+            if !pause_rendering && self.raytracer.sample_count() < 300 {
+                // Render directly to the screen
+                self.raytracer.render_to_frame(&self.wgpu.device, &self.wgpu.queue, &self.wgpu.swap_chain.get_next_texture().unwrap().view);
             }
 
             for event in event_pump.poll_iter() {
@@ -181,20 +177,21 @@ impl System {
                     }
 
                     Event::Window { win_event: WindowEvent::Resized(width, height), .. } => {
-                        self.resize(width as u32, height as u32);
+                        let width = width as u32; 
+                        let height = height as u32;
+
+                        self.resize(width, height);
                     } 
 
                     Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
-                        stop_rendering = !stop_rendering;
+                        pause_rendering = !pause_rendering;
                     }
 
                     _ => {}
                 }
             }
             
-            self.render(&raytracer.quad_with_texture);
-
-            std::thread::sleep(std::time::Duration::new(0, 1_000_000 / 60));
+            //std::thread::sleep(std::time::Duration::new(0, 1_000_000 / 60));
         }
     }
 
