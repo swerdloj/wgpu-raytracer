@@ -375,7 +375,7 @@ vec3 fire_ray(Ray ray) {
 }
 
 void main() {
-    rand_state = (gl_FragCoord.xy / window_size) + sample_number * 14.23;
+    rand_state = (gl_FragCoord.xy / window_size) + sample_number * 15.23;
 
     vec3 position = vec3(-3.5, 2.5, 3);
     vec3 lookat = vec3(0, 0, -1);
@@ -403,21 +403,16 @@ void main() {
     color /= float(samples_per_pixel);
 
     // Gamma correction & contrast adjustment
-    // color = smoothstep(0., 1., sqrt(color));
+    color = smoothstep(0., 1., sqrt(color));
 
     // Global work group position (corresponds to current pixel in this case)
     // `imageStore` expects an ivec2, hence the cast
     ivec2 pixel_coords = ivec2(gl_FragCoord.xy);
 
     if (sample_number > 1) {
-        color = clamp(vec3(0.), vec3(1.), color);
         color += imageLoad(img_output, pixel_coords).rgb;
     }
-
     imageStore(img_output, pixel_coords, vec4(color, sample_number));
-    color /= sample_number;
 
-    color = sqrt(color);
-    color = smoothstep(0., 1., color);
-    out_color = vec4(color, 1.);
+    out_color = vec4(color / float(sample_number), 1.);
 }

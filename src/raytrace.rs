@@ -36,7 +36,7 @@ impl RayTracer {
         self.uniforms.sample_number
     }
 
-    fn reset_samples(&mut self) {
+    pub fn reset_samples(&mut self) {
         self.uniforms.sample_number = 1;
     }
 
@@ -126,7 +126,7 @@ impl RayTracer {
         texture_bind_group
     }
 
-    pub fn new(device: &Device, texture_size: (u32, u32)) -> Self {
+    pub fn new(device: &Device, width: u32, height: u32) -> Self {
         let vert_src = include_str!("../shaders/raytrace/rt.vert");
         let vert_spirv = glsl_to_spirv::compile(vert_src, glsl_to_spirv::ShaderType::Vertex).unwrap();
         let vert_data = read_spirv(vert_spirv).unwrap();
@@ -155,12 +155,10 @@ impl RayTracer {
             label: Some("ray_trace_texture_bind_group_layout"),
         });
 
-        let texture_bind_group = Self::create_texture_bind_group(device, &texture_bind_group_layout, texture_size.0, texture_size.1);
-
-        // let texture_view = texture.create_default_view();
+        let texture_bind_group = Self::create_texture_bind_group(device, &texture_bind_group_layout, width, height);
 
         let uniforms = Uniforms {
-            dimensions: (texture_size.0 as f32, texture_size.1 as f32).into(),
+            dimensions: (width as f32, height as f32).into(),
             sample_number: 1,
             // _padding1: [0u32; 3],
             samples_per_pixel: 2,

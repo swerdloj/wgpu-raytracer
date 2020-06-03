@@ -42,7 +42,7 @@ impl System {
         let quad_bind_group_layout = Quad::bind_group_layout(&wgpu.device);
         let quad_render_pipeline = Quad::create_render_pipeline(&wgpu.device, &quad_bind_group_layout, wgpu.sc_desc.format, None);
 
-        let raytracer = RayTracer::new(&wgpu.device, (width, height));
+        let raytracer = RayTracer::new(&wgpu.device, width, height);
         
         Self {
             sdl2,
@@ -159,14 +159,21 @@ impl System {
         let mut event_pump = self.sdl2.sdl2_context.event_pump().unwrap();
 
         let mut pause_rendering = false;
+        let mut target_reached = false;
 
         // FIXME: Why are there random black pixels appearing after a while??
         // ^ Adding a `clamp(0, 1, color) fixed it -- (Leaving this comment here until I understand the actual issue)
 
         'run: loop {
-            if !pause_rendering && self.raytracer.sample_count() < 300 {
-                // Render directly to the screen
-                self.raytracer.render_to_frame(&self.wgpu.device, &self.wgpu.queue, &self.wgpu.swap_chain.get_next_texture().unwrap().view);
+            if !pause_rendering {
+                if self.raytracer.sample_count() == 300 && !target_reached {
+                    println!("Target sample count reached. Pausing (press 'Space' to resume).");
+                    pause_rendering = true;
+                    target_reached = true;
+                } else {   
+                    // Render directly to the screen
+                    self.raytracer.render_to_frame(&self.wgpu.device, &self.wgpu.queue, &self.wgpu.swap_chain.get_next_texture().unwrap().view);
+                }
             }
 
             for event in event_pump.poll_iter() {
@@ -177,14 +184,25 @@ impl System {
                     }
 
                     Event::Window { win_event: WindowEvent::Resized(width, height), .. } => {
-                        let width = width as u32; 
-                        let height = height as u32;
+                        println!("Resized window to {}x{}", width, height);
 
-                        self.resize(width, height);
+                        pause_rendering = false;
+                        target_reached = false;
+                        self.resize(width as u32, height as u32);
                     } 
+
+                    Event::KeyDown { keycode: Some(Keycode::R), .. } => {
+                        println!("Restarting render");
+
+                        pause_rendering = false;
+                        target_reached = false;
+                        self.raytracer.reset_samples();
+                    }
 
                     Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
                         pause_rendering = !pause_rendering;
+                        
+                        println!("{} render", if pause_rendering {"Paused"} else {"Resuming"});
                     }
 
                     _ => {}
