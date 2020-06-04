@@ -1,8 +1,5 @@
 use wgpu::*;
 
-use crate::quad::Quad;
-use crate::texture;
-
 #[repr(C)]
 #[derive(Copy, Clone)]
 // TODO: Why isn't padding needed here?
@@ -13,6 +10,7 @@ struct Uniforms {
     samples_per_pixel: u32,
     // _padding2: [u32; 3],
     max_ray_bounces: u32,
+    v_fov: f32,
 }
 unsafe impl bytemuck::Pod for Uniforms {}
 unsafe impl bytemuck::Zeroable for Uniforms {}
@@ -38,6 +36,19 @@ impl RayTracer {
 
     pub fn reset_samples(&mut self) {
         self.uniforms.sample_number = 1;
+    }
+
+    pub fn fov(&self) -> &f32 {&self.uniforms.v_fov}
+
+    /// Returns true if fov was adjusted within bounds
+    pub fn change_fov(&mut self, df: f32) -> bool {
+        if self.uniforms.v_fov + df > 160. || self.uniforms.v_fov + df < 10. {
+            false
+        } else {   
+            self.reset_samples();
+            self.uniforms.v_fov += df;
+            true
+        }
     }
 
     pub fn resize(&mut self, device: &Device, width: u32, height: u32) {
@@ -130,7 +141,8 @@ impl RayTracer {
         let vert_spirv = include_bytes!("../shaders/raytrace/rt.vert.spv");
         let vert_data = read_spirv(std::io::Cursor::new(vert_spirv.as_ref())).unwrap();
 
-        let frag_spirv = include_bytes!("../shaders/raytrace/rt.frag.spv");
+        // let frag_spirv = include_bytes!("../shaders/raytrace/rt.frag.spv");
+        let frag_spirv = include_bytes!("../shaders/raytrace_hlsl/raytrace.frag.hlsl.spv");
         let frag_data = read_spirv(std::io::Cursor::new(frag_spirv.as_ref())).unwrap();
 
         let vert_module = device.create_shader_module(&vert_data);
@@ -162,6 +174,7 @@ impl RayTracer {
             samples_per_pixel: 2,
             // _padding2: [0u32; 3],
             max_ray_bounces: 12,
+            v_fov: 80f32,
         };
 
         let uniform_buffer = device.create_buffer_with_data(

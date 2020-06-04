@@ -75,7 +75,7 @@ vec3 random_in_unit_disk() {
             phi = 4.0f + spy / spx;
         } else {
             r = -spy;
-            if(spy != 0.0)
+            if (spy != 0.0)
                 phi = 6.0 - spx / spy;
             else
                 phi = 0.0;

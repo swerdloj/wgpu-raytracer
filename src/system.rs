@@ -183,13 +183,10 @@ impl System {
         let mut pause_rendering = false;
         let mut target_reached = false;
 
-        // FIXME: Why are there random black pixels appearing after a while??
-        // ^ Adding a `clamp(0, 1, color) fixed it -- (Leaving this comment here until I understand the actual issue)
-
         'run: loop {
             if !pause_rendering {
                 if self.raytracer.sample_count() == 300 && !target_reached {
-                    println!("Target sample count reached. Pausing (press 'Space' to resume).");
+                    println!("Target sample count reached. Pausing (press 'Space' to resume)");
                     pause_rendering = true;
                     target_reached = true;
                 } else {   
@@ -202,7 +199,16 @@ impl System {
                 match event {
                     Event::KeyDown { keycode: Some(Keycode::Escape), .. }
                     | Event::Quit { .. } => {
+                        println!("Quitting");
                         break 'run;
+                    }
+
+                    Event::MouseWheel {y, ..} => {
+                        pause_rendering = false;
+                        target_reached = false;
+                        if self.raytracer.change_fov(-2.0 * y as f32) {
+                            println!("Vertical FoV: {}", self.raytracer.fov());
+                        }
                     }
 
                     Event::Window { win_event: WindowEvent::Resized(width, height), .. } => {
@@ -239,7 +245,8 @@ impl System {
                 }
             }
             
-            //std::thread::sleep(std::time::Duration::new(0, 1_000_000 / 60));
+            // TODO: Implement delta time to ensure extra time isn't wasted here
+            std::thread::sleep(std::time::Duration::new(0, 1_000_000 / 60));
         }
     }
 
