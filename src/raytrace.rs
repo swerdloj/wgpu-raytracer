@@ -2,15 +2,21 @@ use wgpu::*;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
-// TODO: Why isn't padding needed here?
-struct Uniforms {
-    dimensions: cgmath::Vector2<f32>,
-    sample_number: u32,
-    // _padding1: [u32; 3],
-    samples_per_pixel: u32,
-    // _padding2: [u32; 3],
-    max_ray_bounces: u32,
-    v_fov: f32,
+// Padding help: https://learnopengl.com/Advanced-OpenGL/Advanced-GLSL
+// Vec3/4 must be aligned to multiple of 16
+struct Uniforms {               // OFFSET + SIZE
+    dimensions: cgmath::Vector2<f32>, // 0 + 8
+    sample_number: u32, // 8 + 4
+    samples_per_pixel: u32, // 12 + 4
+
+    max_ray_bounces: u32, // 16 + 4
+    v_fov: f32, // 20 + 4
+
+    _padding1: [u32; 2], // 24 + 8
+    camera_position: cgmath::Vector3<f32>, // 32 + 12
+    
+    _padding2: [u32; 1], // 44 + 4
+    camera_lookat: cgmath::Vector3<f32>, // 48 + 12
 }
 unsafe impl bytemuck::Pod for Uniforms {}
 unsafe impl bytemuck::Zeroable for Uniforms {}
@@ -39,6 +45,18 @@ impl RayTracer {
     }
 
     pub fn fov(&self) -> &f32 {&self.uniforms.v_fov}
+
+    pub fn update_position(&mut self, position: cgmath::Vector3<f32>) {
+        self.reset_samples();
+
+        self.uniforms.camera_position = position;
+    }
+
+    pub fn update_lookat(&mut self, lookat: cgmath::Vector3<f32>) {
+        self.reset_samples();
+
+        self.uniforms.camera_lookat = lookat;
+    }
 
     /// Returns true if fov was adjusted within bounds
     pub fn change_fov(&mut self, df: f32) -> bool {
@@ -167,14 +185,17 @@ impl RayTracer {
 
         let texture_bind_group = Self::create_texture_bind_group(device, &texture_bind_group_layout, width, height);
 
+        println!("Alignment: {}",std::mem::align_of::<Uniforms>());
         let uniforms = Uniforms {
             dimensions: (width as f32, height as f32).into(),
             sample_number: 1,
-            // _padding1: [0u32; 3],
             samples_per_pixel: 2,
-            // _padding2: [0u32; 3],
             max_ray_bounces: 12,
             v_fov: 80f32,
+            _padding1: [0; 2],
+            camera_position: (0.0, 0.0, 5.0).into(),
+            _padding2: [0; 1],
+            camera_lookat: (0.0, 0.0, -1.0).into(),
         };
 
         let uniform_buffer = device.create_buffer_with_data(

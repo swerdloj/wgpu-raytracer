@@ -1,10 +1,26 @@
 use sdl2::event::{Event, WindowEvent};
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::{Scancode, Keycode};
 
 use wgpu::*;
 
 use crate::quad::{Quad, QuadBuilder};
 use crate::raytrace::RayTracer;
+
+pub enum Message {
+    Quit,
+    ConsumeEvent,
+    Nothing,
+}
+
+pub trait Runnable {
+    /// Called for *every* event in a frame.
+    /// - Return `Message::Quit` to exit the application
+    /// - Return `Message::ConsumeEvent` to consume an event.
+    /// - Return `Message::Nothing` to continue feeding that event to other `update`s.
+    fn update(&mut self, event: &Event) -> Message;
+    /// Called once per frame
+    fn fixed_update(&mut self);
+}
 
 pub struct SDL2 {
     sdl2_context: sdl2::Sdl,
@@ -156,8 +172,12 @@ impl System {
         self.raytracer.resize(&self.wgpu.device, width, height)
     }
 
+    pub fn set_relative_mouse_mode(&self, on: bool) {
+        self.sdl2.sdl2_context.mouse().set_relative_mouse_mode(on);
+    }
+
     // TODO: Allow user to choose between borderless or normal
-    fn toggle_full_screen(&mut self) {
+    pub fn toggle_full_screen(&mut self) {
         match self.sdl2.window.fullscreen_state() {
             // Enable borderless
             sdl2::video::FullscreenType::Off => {
@@ -183,6 +203,9 @@ impl System {
         let mut pause_rendering = false;
         let mut target_reached = false;
 
+        self.sdl2.sdl2_context.mouse().set_relative_mouse_mode(true);
+        let mut camera = crate::camera::Camera::new(0.05);
+
         'run: loop {
             if !pause_rendering {
                 if self.raytracer.sample_count() == 300 && !target_reached {
@@ -201,6 +224,13 @@ impl System {
                     | Event::Quit { .. } => {
                         println!("Quitting");
                         break 'run;
+                    }
+
+                    Event::MouseMotion { xrel, yrel, .. } => {
+                        pause_rendering = false;
+                        target_reached = false;
+                        camera.update_angle(xrel as f32, yrel as f32);
+                        self.raytracer.update_lookat(camera.target);
                     }
 
                     Event::MouseWheel {y, ..} => {
@@ -241,9 +271,52 @@ impl System {
                         self.toggle_full_screen();
                     }
 
-                    _ => {}
+                    _ => {
+                        // println!("Unhandled event: {:?}", event);
+                    }
                 }
             }
+
+            let mut updated = false;
+            let keys = event_pump.keyboard_state();
+            if keys.is_scancode_pressed(Scancode::W) {
+                pause_rendering = false;
+                target_reached = false;
+                updated = true;
+                camera.update_position(0.0, 0.0, -0.05);
+            }
+            if keys.is_scancode_pressed(Scancode::A) {
+                pause_rendering = false;
+                target_reached = false;
+                updated = true;
+                camera.update_position(-0.05, 0.0, 0.0);
+            }
+            if keys.is_scancode_pressed(Scancode::S) {
+                pause_rendering = false;
+                target_reached = false;
+                updated = true;
+                camera.update_position(0.0, 0.0, 0.05);
+            }
+            if keys.is_scancode_pressed(Scancode::D) {
+                pause_rendering = false;
+                target_reached = false;
+                updated = true;
+                camera.update_position(0.05, 0.0, 0.0);
+            }
+            if keys.is_scancode_pressed(Scancode::LShift) {
+                pause_rendering = false;
+                target_reached = false;
+                updated = true;
+                camera.update_position(0.0, 0.1, 0.0);
+            }
+            if keys.is_scancode_pressed(Scancode::LCtrl) {
+                pause_rendering = false;
+                target_reached = false;
+                updated = true;
+                camera.update_position(0.0, -0.1, 0.0);
+            }
+            if updated {self.raytracer.update_position(camera.position);}
+            
             
             // TODO: Implement delta time to ensure extra time isn't wasted here
             std::thread::sleep(std::time::Duration::new(0, 1_000_000 / 60));

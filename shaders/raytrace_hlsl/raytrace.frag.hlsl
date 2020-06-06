@@ -10,12 +10,28 @@ layout(set = 0, binding = 0) RWTexture2D<float4> storage_image;
 // Raytracer parameters/inputs
 layout(set = 1, binding = 0)
 cbuffer Uniforms {
-    float2 window_size;     // Window dimensions
-    uint sample_number;     // The current sample number (starting at 1)
-    uint samples_per_pixel; // Rays fired per pixel
-    uint max_ray_bounces;   // Max bounces per ray (path length)
-    float v_fov;            // Vertical field of view
+    // Explicit offsets for debugging
+    layout(offset = 0) float2 window_size;     // Window dimensions
+    layout(offset = 8) uint sample_number;     // The current sample number (starting at 1)
+    layout(offset = 12) uint samples_per_pixel; // Rays fired per pixel
+    layout(offset = 16) uint max_ray_bounces;   // Max bounces per ray (path length)
+    layout(offset = 20) float v_fov;            // Vertical field of view
+
+    layout(offset = 32) float3 camera_position; // Camera location (look from)
+    layout(offset = 48) float3 camera_lookat;   // Camera lookat position
 };
+// This is because my image is still upside down :(
+static float3 camera_lookat2 = camera_lookat * float3(1, -1, 1);
+
+
+// TODO: For fake inerfaces, inherit from a base class which has:
+//       One member variable to identify which super-type (like tagged union)
+//       The pre-implemented methods would then call a function defined elsewhere
+//       using a switch-case on the super-type.
+//       This would allow for the likes of storing different shapes in the same array
+//       TODO: Try implementing this idea for Material and see how it works.
+
+// TODO: To fix the Material/HitRecord issue, try defining each in their own header, then have each import the other's header.
 
 
 const float PI = 3.141592;
@@ -334,11 +350,15 @@ bool scene(Ray ray, float dist_min, float dist_max, inout HitRecord record) {
         Material_::create_dielectric(1.5),
     };
     Sphere metal1 = { {1, 0, -1}, 0.5, 
-        Material_::create_metal(float3(0.8, 0.6, 0.2), 0.0),
+        Material_::create_metal(float3(0.8, 0.6, 0.2), 0.3),
     };
     Sphere metal2 = { {-1, 0, -1}, 0.5, 
         Material_::create_metal(float3(0.8, 0.8, 0.8), 0.3),
     };
+
+    // Sphere lookat_pos = { camera_position + camera_lookat2, 0.02,
+    //     Material_::create_metal(float3(0.4, 0, 0), 0.2),
+    // };
     
     const uint num_spheres = 5;
     Sphere spheres[] = {glass1, glass2, big_sphere, metal1, small_sphere};
@@ -396,18 +416,18 @@ float3 fire_ray(Ray ray) {
 float4 main(float4 pixel_coords : SV_POSITION) : COLOR0 {
     rand_state = (pixel_coords.xy / window_size) + sample_number * 15.23;
 
-    float3 cam_position = {-5, 2, 2};
+    float3 cam_position = {0, 0, 5};
     float3 lookat = {0, 0, -1};
     float3 v_up = {0, 1, 0};
     float focal_dist = length(cam_position - lookat);
 
     Camera camera = Camera_::create(
-        cam_position, // Position
-        lookat, // Lookat
-        v_up,  // Up vector
-        clamp(v_fov, 10, 160), // Vertical field of view
-        0.5,              // Aperature size
-        focal_dist        // Focal plane dist
+        camera_position,// Position
+        camera_lookat2 + camera_position,         // Lookat
+        v_up,           // Up vector
+        v_fov,          // Vertical field of view
+        0.0,            // Aperature size
+        focal_dist      // Focal plane dist
     );
 
     float3 color = 0;
