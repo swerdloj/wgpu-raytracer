@@ -11,16 +11,16 @@ layout(set = 0, binding = 0) RWTexture2D<float4> storage_image;
 layout(set = 1, binding = 0)
 cbuffer Uniforms {
     // Explicit offsets for debugging
-    layout(offset = 0) float2 window_size;     // Window dimensions
-    layout(offset = 8) uint sample_number;     // The current sample number (starting at 1)
-    layout(offset = 12) uint samples_per_pixel; // Rays fired per pixel
-    layout(offset = 16) uint max_ray_bounces;   // Max bounces per ray (path length)
-    layout(offset = 20) float v_fov;            // Vertical field of view
+    /* layout(offset = 0)  */ float2 window_size;     // Window dimensions
+    /* layout(offset = 8)  */ uint sample_number;     // The current sample number (starting at 1)
+    /* layout(offset = 12) */ uint samples_per_pixel; // Rays fired per pixel
+    /* layout(offset = 16) */ uint max_ray_bounces;   // Max bounces per ray (path length)
+    /* layout(offset = 20) */ float v_fov;            // Vertical field of view
 
-    layout(offset = 32) float3 camera_position; // Camera location (look from)
-    layout(offset = 48) float3 camera_lookat;   // Camera lookat position
+    /* layout(offset = 32) */ float3 camera_position; // Camera location (look from)
+    /* layout(offset = 48) */ float3 camera_lookat;   // Camera lookat position
 };
-// This is because my image is still upside down :(
+// This is because my image is still upside down...
 static float3 camera_lookat2 = camera_lookat * float3(1, -1, 1);
 
 

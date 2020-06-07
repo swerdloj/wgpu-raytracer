@@ -5,6 +5,7 @@ use wgpu::*;
 
 use crate::quad::{Quad, QuadBuilder};
 use crate::raytrace::RayTracer;
+use crate::application::ApplicationState;
 
 pub enum Message {
     Quit,
@@ -13,19 +14,45 @@ pub enum Message {
 }
 
 pub trait Runnable {
+    /// Called *once* as soon as program main loop begins
+    fn init(&mut self, sdl2: &SDL2);
     /// Called for *every* event in a frame.
     /// - Return `Message::Quit` to exit the application
     /// - Return `Message::ConsumeEvent` to consume an event.
     /// - Return `Message::Nothing` to continue feeding that event to other `update`s.
-    fn update(&mut self, event: &Event) -> Message;
+    fn update(&mut self, sdl2: &SDL2, raytracer: &mut RayTracer, event: &Event) -> Message;
     /// Called once per frame
-    fn fixed_update(&mut self);
+    fn fixed_update(&mut self, sdl2: &SDL2);
 }
 
 pub struct SDL2 {
     sdl2_context: sdl2::Sdl,
     _video: sdl2::VideoSubsystem,
     window: sdl2::video::Window,
+}
+
+impl SDL2 {
+    pub fn set_relative_mouse_mode(&self, on: bool) {
+        self.sdl2_context.mouse().set_relative_mouse_mode(on);
+    }
+
+    // TODO: Allow user to choose between borderless or normal
+    pub fn toggle_full_screen(&mut self) -> (u32, u32) {
+        match self.window.fullscreen_state() {
+            // Enable borderless
+            sdl2::video::FullscreenType::Off => {
+                self.window.set_fullscreen(sdl2::video::FullscreenType::Desktop).unwrap();
+            }
+
+            // Disable fullscreen
+            sdl2::video::FullscreenType::Desktop
+            | sdl2::video::FullscreenType::True => {
+                self.window.set_fullscreen(sdl2::video::FullscreenType::Off).unwrap();
+            }
+        }
+
+        self.window.size()
+    }
 }
 
 pub struct WGPU {
@@ -40,6 +67,8 @@ pub struct WGPU {
 pub struct System {
     pub sdl2: SDL2,
     pub wgpu: WGPU,
+
+    state: ApplicationState,
 
     quad_bind_group_layout: BindGroupLayout,
     quad_render_pipeline: RenderPipeline,
@@ -60,9 +89,13 @@ impl System {
 
         let raytracer = RayTracer::new(&wgpu.device, width, height);
         
+        let state = ApplicationState::new();
+
         Self {
             sdl2,
             wgpu,
+            state,
+
             quad_bind_group_layout,
             quad_render_pipeline,
 
@@ -75,7 +108,7 @@ impl System {
     
         let video = sdl2_context.video().unwrap();
     
-        let window = video.window("Raytracing", width, height)
+        let window = video.window("Ray Tracing", width, height)
             .position_centered()
             .resizable()
             .build()
@@ -172,29 +205,6 @@ impl System {
         self.raytracer.resize(&self.wgpu.device, width, height)
     }
 
-    pub fn set_relative_mouse_mode(&self, on: bool) {
-        self.sdl2.sdl2_context.mouse().set_relative_mouse_mode(on);
-    }
-
-    // TODO: Allow user to choose between borderless or normal
-    pub fn toggle_full_screen(&mut self) {
-        match self.sdl2.window.fullscreen_state() {
-            // Enable borderless
-            sdl2::video::FullscreenType::Off => {
-                self.sdl2.window.set_fullscreen(sdl2::video::FullscreenType::Desktop).unwrap();
-            }
-
-            // Disable fullscreen
-            sdl2::video::FullscreenType::Desktop
-            | sdl2::video::FullscreenType::True => {
-                self.sdl2.window.set_fullscreen(sdl2::video::FullscreenType::Off).unwrap();
-                
-                let (width, height) = self.sdl2.window.size();
-                self.resize(width, height);
-            }
-        }
-    }
-
     // TODO: Move this to `Application` struct which handles application state as well
     // TODO: A lot of this can probably be simplified
     pub fn run(&mut self) {
@@ -203,12 +213,13 @@ impl System {
         let mut pause_rendering = false;
         let mut target_reached = false;
 
-        self.sdl2.sdl2_context.mouse().set_relative_mouse_mode(true);
-        let mut camera = crate::camera::Camera::new(0.05);
+        let mut camera = crate::camera::Camera::new(0.03);
+
+        self.state.init(&self.sdl2);
 
         'run: loop {
             if !pause_rendering {
-                if self.raytracer.sample_count() == 300 && !target_reached {
+                if self.raytracer.sample_count() == 100 && !target_reached {
                     println!("Target sample count reached. Pausing (press 'Space' to resume)");
                     pause_rendering = true;
                     target_reached = true;
@@ -219,10 +230,23 @@ impl System {
             }
 
             for event in event_pump.poll_iter() {
+                match self.state.update(&self.sdl2, &mut self.raytracer, &event) {
+                    Message::Quit => {
+                        // Application should now quit
+                        break 'run;
+                    }
+                    Message::ConsumeEvent => {
+                        // Event was consumed, skip to next event
+                        continue;
+                    }
+                    Message::Nothing => {
+                        // No message was returned, nothing to do
+                    }
+                }
+
+                // System-handled events
                 match event {
-                    Event::KeyDown { keycode: Some(Keycode::Escape), .. }
-                    | Event::Quit { .. } => {
-                        println!("Quitting");
+                    Event::Quit { .. } => {
                         break 'run;
                     }
 
@@ -268,7 +292,9 @@ impl System {
                         
                         pause_rendering = false;
                         target_reached = false;
-                        self.toggle_full_screen();
+                        
+                        let (width, height) = self.sdl2.toggle_full_screen();
+                        self.resize(width, height);
                     }
 
                     _ => {
@@ -289,7 +315,7 @@ impl System {
                 pause_rendering = false;
                 target_reached = false;
                 updated = true;
-                camera.update_position(-0.05, 0.0, 0.0);
+                camera.update_position(-0.02, 0.0, 0.0);
             }
             if keys.is_scancode_pressed(Scancode::S) {
                 pause_rendering = false;
@@ -301,19 +327,19 @@ impl System {
                 pause_rendering = false;
                 target_reached = false;
                 updated = true;
-                camera.update_position(0.05, 0.0, 0.0);
+                camera.update_position(0.02, 0.0, 0.0);
             }
             if keys.is_scancode_pressed(Scancode::LShift) {
                 pause_rendering = false;
                 target_reached = false;
                 updated = true;
-                camera.update_position(0.0, 0.1, 0.0);
+                camera.update_position(0.0, 0.05, 0.0);
             }
             if keys.is_scancode_pressed(Scancode::LCtrl) {
                 pause_rendering = false;
                 target_reached = false;
                 updated = true;
-                camera.update_position(0.0, -0.1, 0.0);
+                camera.update_position(0.0, -0.05, 0.0);
             }
             if updated {self.raytracer.update_position(camera.position);}
             
@@ -321,6 +347,7 @@ impl System {
             // TODO: Implement delta time to ensure extra time isn't wasted here
             std::thread::sleep(std::time::Duration::new(0, 1_000_000 / 60));
         }
+        println!("Quitting...");
     }
 
     pub fn create_texture_from_path<P: AsRef<std::path::Path>>(&self, path: P) -> crate::texture::Texture {

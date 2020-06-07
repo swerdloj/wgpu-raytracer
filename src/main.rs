@@ -18,7 +18,7 @@ mod camera;
 mod application;
 
 fn main() {
-    let mut application = application::Application::new(1920, 1080);
+    let mut system = futures::executor::block_on(system::System::new(1920, 1080));
     
-    application.start();
+    system.run();
 }

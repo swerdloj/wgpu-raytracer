@@ -4,17 +4,19 @@ use wgpu::*;
 #[derive(Copy, Clone)]
 // Padding help: https://learnopengl.com/Advanced-OpenGL/Advanced-GLSL
 // Vec3/4 must be aligned to multiple of 16
-struct Uniforms {               // OFFSET + SIZE
+struct Uniforms {                     // OFFSET + SIZE
     dimensions: cgmath::Vector2<f32>, // 0 + 8
     sample_number: u32, // 8 + 4
     samples_per_pixel: u32, // 12 + 4
 
     max_ray_bounces: u32, // 16 + 4
+
+    // TODO: Move this to be part of the camera
     v_fov: f32, // 20 + 4
 
     _padding1: [u32; 2], // 24 + 8
     camera_position: cgmath::Vector3<f32>, // 32 + 12
-    
+
     _padding2: [u32; 1], // 44 + 4
     camera_lookat: cgmath::Vector3<f32>, // 48 + 12
 }
@@ -185,13 +187,12 @@ impl RayTracer {
 
         let texture_bind_group = Self::create_texture_bind_group(device, &texture_bind_group_layout, width, height);
 
-        println!("Alignment: {}",std::mem::align_of::<Uniforms>());
         let uniforms = Uniforms {
             dimensions: (width as f32, height as f32).into(),
             sample_number: 1,
             samples_per_pixel: 2,
-            max_ray_bounces: 12,
-            v_fov: 80f32,
+            max_ray_bounces: 10,
+            v_fov: 100.0,
             _padding1: [0; 2],
             camera_position: (0.0, 0.0, 5.0).into(),
             _padding2: [0; 1],

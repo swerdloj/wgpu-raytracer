@@ -3,7 +3,9 @@
 /// First person camera that relies on relative mouse mode (set via sdl2)
 pub struct Camera {
     sensitivity: f32,
+    /// x-axis rotation (degrees)
     yaw: f32,
+    /// y-axis rotation (degrees)
     pitch: f32,
 
     /// Current position
@@ -26,7 +28,7 @@ impl Camera {
 
     pub fn update_position(&mut self, dx: f32, dy: f32, dz: f32) {
         self.position += (dx, dy, dz).into();
-        println!("Position: {:?}", self.position);
+        // println!("Position: {:?}", self.position);
     }
 
     pub fn update_angle(&mut self, dx: f32, dy: f32) {

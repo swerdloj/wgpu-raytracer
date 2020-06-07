@@ -14,14 +14,14 @@ use std::io::Write;
     So, keeping this as-is seems like the best solution for now.
 */
 
-// TODO: Confirm this works
-const PATH_TO_YOUR_SHADERC_DIRECTORY: &'static str = "C:/Development/shaderc/lib";
+// TODO: This doesn't seem to work. Windows path variable is still required.
+// const PATH_TO_YOUR_SHADERC_DIRECTORY: &'static str = "C:/Development/shaderc/lib";
 
 fn main() {
     // Don't need to recompile the shaders for every build
     // println!("cargo:rerun-if-changed=shaders/");
     
-    println!("cargo:rustc-env=SHADERC_LIB_DIR={}", PATH_TO_YOUR_SHADERC_DIRECTORY);
+    // println!("cargo:rustc-env=SHADERC_LIB_DIR={}", PATH_TO_YOUR_SHADERC_DIRECTORY);
 
     let mut compiler = shaderc::Compiler::new().unwrap();
 
