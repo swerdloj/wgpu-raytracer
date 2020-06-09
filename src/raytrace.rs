@@ -11,8 +11,8 @@ struct Uniforms {                     // OFFSET + SIZE
 
     max_ray_bounces: u32, // 16 + 4
 
-    // TODO: Move this to be part of the camera
-    v_fov: f32, // 20 + 4
+
+    camera_v_fov: f32, // 20 + 4
 
     _padding1: [u32; 2], // 24 + 8
     camera_position: cgmath::Vector3<f32>, // 32 + 12
@@ -33,6 +33,9 @@ pub struct RayTracer {
     uniform_bind_group: BindGroup,
 
     pipeline: RenderPipeline,
+
+    pub pause_rendering: bool,
+    pub target_samples: u32,
 }
 
 impl RayTracer {
@@ -46,29 +49,11 @@ impl RayTracer {
         self.uniforms.sample_number = 1;
     }
 
-    pub fn fov(&self) -> &f32 {&self.uniforms.v_fov}
-
-    pub fn update_position(&mut self, position: cgmath::Vector3<f32>) {
+    pub fn update_camera(&mut self, camera: &crate::camera::Camera) {
         self.reset_samples();
-
-        self.uniforms.camera_position = position;
-    }
-
-    pub fn update_lookat(&mut self, lookat: cgmath::Vector3<f32>) {
-        self.reset_samples();
-
-        self.uniforms.camera_lookat = lookat;
-    }
-
-    /// Returns true if fov was adjusted within bounds
-    pub fn change_fov(&mut self, df: f32) -> bool {
-        if self.uniforms.v_fov + df > 160. || self.uniforms.v_fov + df < 10. {
-            false
-        } else {   
-            self.reset_samples();
-            self.uniforms.v_fov += df;
-            true
-        }
+        self.uniforms.camera_lookat = camera.target;
+        self.uniforms.camera_position = camera.position;
+        self.uniforms.camera_v_fov = camera.v_fov;
     }
 
     pub fn resize(&mut self, device: &Device, width: u32, height: u32) {
@@ -157,7 +142,7 @@ impl RayTracer {
         texture_bind_group
     }
 
-    pub fn new(device: &Device, width: u32, height: u32) -> Self {
+    pub fn new(device: &Device, width: u32, height: u32, target_samples: u32) -> Self {
         let vert_spirv = include_bytes!("../shaders/raytrace/rt.vert.spv");
         let vert_data = read_spirv(std::io::Cursor::new(vert_spirv.as_ref())).unwrap();
 
@@ -192,7 +177,8 @@ impl RayTracer {
             sample_number: 1,
             samples_per_pixel: 2,
             max_ray_bounces: 10,
-            v_fov: 100.0,
+
+            camera_v_fov: 100.0,
             _padding1: [0; 2],
             camera_position: (0.0, 0.0, 5.0).into(),
             _padding2: [0; 1],
@@ -284,6 +270,9 @@ impl RayTracer {
             uniform_bind_group,
 
             pipeline: render_pipeline,
+
+            pause_rendering: false,
+            target_samples,
         }
     }
 }

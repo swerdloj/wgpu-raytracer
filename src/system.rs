@@ -1,28 +1,32 @@
 use sdl2::event::{Event, WindowEvent};
-use sdl2::keyboard::{Scancode, Keycode};
+use sdl2::keyboard::{Scancode, Keycode, KeyboardState};
 
 use wgpu::*;
 
+use crate::timing::Timer;
 use crate::quad::{Quad, QuadBuilder};
 use crate::raytrace::RayTracer;
 use crate::application::ApplicationState;
 
 pub enum Message {
+    /// Application should exit
     Quit,
+    /// Accumulator should be reset (when camera is moved). Event is consumed.
+    RestartRender,
+    /// Event should not be passed forwrd
     ConsumeEvent,
+    /// No action to be taken
     Nothing,
 }
 
+// I plan on using a similar API for various components. For example, a UI, a console, the camera, and so on
 pub trait Runnable {
     /// Called *once* as soon as program main loop begins
     fn init(&mut self, sdl2: &SDL2);
     /// Called for *every* event in a frame.
-    /// - Return `Message::Quit` to exit the application
-    /// - Return `Message::ConsumeEvent` to consume an event.
-    /// - Return `Message::Nothing` to continue feeding that event to other `update`s.
     fn update(&mut self, sdl2: &SDL2, raytracer: &mut RayTracer, event: &Event) -> Message;
     /// Called once per frame
-    fn fixed_update(&mut self, sdl2: &SDL2);
+    fn fixed_update(&mut self, sdl2: &SDL2, keys: &KeyboardState, raytracer: &mut RayTracer);
 }
 
 pub struct SDL2 {
@@ -59,14 +63,15 @@ pub struct WGPU {
     render_surface: Surface,
     adapter: Adapter,
     pub device: Device,
-    queue: Queue,
+    pub queue: Queue,
     sc_desc: SwapChainDescriptor,
-    swap_chain: SwapChain,
+    pub swap_chain: SwapChain,
 }
 
 pub struct System {
     pub sdl2: SDL2,
     pub wgpu: WGPU,
+    pub timer: Timer,
 
     state: ApplicationState,
 
@@ -81,19 +86,21 @@ impl System {
     pub async fn new(width: u32, height: u32) -> Self {
         let sdl2 = Self::init_sdl2(width, height);
         let wgpu = Self::init_wgpu(&sdl2.window).await;
+        let timer = Timer::from_sdl2_context(&sdl2.sdl2_context);
 
         // NOTE: bind_group_layouts MUST be SHARED. Creating the same one multiple times will cause errors.
         // Hence storing this in System.
         let quad_bind_group_layout = Quad::bind_group_layout(&wgpu.device);
         let quad_render_pipeline = Quad::create_render_pipeline(&wgpu.device, &quad_bind_group_layout, wgpu.sc_desc.format, None);
 
-        let raytracer = RayTracer::new(&wgpu.device, width, height);
+        let raytracer = RayTracer::new(&wgpu.device, width, height, 100);
         
         let state = ApplicationState::new();
 
         Self {
             sdl2,
             wgpu,
+            timer,
             state,
 
             quad_bind_group_layout,
@@ -205,27 +212,28 @@ impl System {
         self.raytracer.resize(&self.wgpu.device, width, height)
     }
 
-    // TODO: Move this to `Application` struct which handles application state as well
     // TODO: A lot of this can probably be simplified
     pub fn run(&mut self) {
         let mut event_pump = self.sdl2.sdl2_context.event_pump().unwrap();
-
-        let mut pause_rendering = false;
-        let mut target_reached = false;
-
-        let mut camera = crate::camera::Camera::new(0.03);
+        
+        // TODO: Finish implementing timer
+        self.timer.start();
 
         self.state.init(&self.sdl2);
 
         'run: loop {
-            if !pause_rendering {
-                if self.raytracer.sample_count() == 100 && !target_reached {
-                    println!("Target sample count reached. Pausing (press 'Space' to resume)");
-                    pause_rendering = true;
-                    target_reached = true;
+            if !self.raytracer.pause_rendering {
+                if self.raytracer.sample_count() == self.raytracer.target_samples {
+                    println!("Target sample count reached.");
+                    self.raytracer.pause_rendering = true;
                 } else {   
+                    let frame_view = &self.wgpu.swap_chain.get_next_texture().unwrap().view;
+
                     // Render directly to the screen
-                    self.raytracer.render_to_frame(&self.wgpu.device, &self.wgpu.queue, &self.wgpu.swap_chain.get_next_texture().unwrap().view);
+                    self.raytracer.render_to_frame(&self.wgpu.device, &self.wgpu.queue, frame_view);
+
+                    let (width, height) = self.sdl2.window.size();
+                    crate::text::render_text(&mut self.wgpu, frame_view, width, height, &format!("Sample {}/{}\nFPS: {}", self.raytracer.sample_count(), self.raytracer.target_samples, 1000.0/self.timer.average_delta_time()));
                 }
             }
 
@@ -239,6 +247,11 @@ impl System {
                         // Event was consumed, skip to next event
                         continue;
                     }
+                    Message::RestartRender => {
+                        self.raytracer.pause_rendering = false;
+                        self.raytracer.reset_samples();
+                        continue;
+                    }
                     Message::Nothing => {
                         // No message was returned, nothing to do
                     }
@@ -250,48 +263,24 @@ impl System {
                         break 'run;
                     }
 
-                    Event::MouseMotion { xrel, yrel, .. } => {
-                        pause_rendering = false;
-                        target_reached = false;
-                        camera.update_angle(xrel as f32, yrel as f32);
-                        self.raytracer.update_lookat(camera.target);
-                    }
-
-                    Event::MouseWheel {y, ..} => {
-                        pause_rendering = false;
-                        target_reached = false;
-                        if self.raytracer.change_fov(-2.0 * y as f32) {
-                            println!("Vertical FoV: {}", self.raytracer.fov());
-                        }
-                    }
-
                     Event::Window { win_event: WindowEvent::Resized(width, height), .. } => {
                         println!("Resized window to {}x{}", width, height);
 
-                        pause_rendering = false;
-                        target_reached = false;
+                        self.raytracer.pause_rendering = false;
                         self.resize(width as u32, height as u32);
                     } 
 
-                    Event::KeyDown { keycode: Some(Keycode::R), .. } => {
-                        println!("Restarting render");
-
-                        pause_rendering = false;
-                        target_reached = false;
-                        self.raytracer.reset_samples();
-                    }
-
                     Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
-                        pause_rendering = !pause_rendering;
-                        
-                        println!("{} render", if pause_rendering {"Paused"} else {"Resuming"});
+                        if self.raytracer.sample_count() != self.raytracer.target_samples {
+                            self.raytracer.pause_rendering = !self.raytracer.pause_rendering;
+                            println!("{} render", if self.raytracer.pause_rendering {"Paused"} else {"Resuming"});
+                        }
                     }
 
                     Event::KeyDown { keycode: Some(Keycode::F11), .. } => {                       
                         println!("Toggle fullscreen");
                         
-                        pause_rendering = false;
-                        target_reached = false;
+                        self.raytracer.pause_rendering = false;
                         
                         let (width, height) = self.sdl2.toggle_full_screen();
                         self.resize(width, height);
@@ -303,49 +292,12 @@ impl System {
                 }
             }
 
-            let mut updated = false;
             let keys = event_pump.keyboard_state();
-            if keys.is_scancode_pressed(Scancode::W) {
-                pause_rendering = false;
-                target_reached = false;
-                updated = true;
-                camera.update_position(0.0, 0.0, -0.05);
-            }
-            if keys.is_scancode_pressed(Scancode::A) {
-                pause_rendering = false;
-                target_reached = false;
-                updated = true;
-                camera.update_position(-0.02, 0.0, 0.0);
-            }
-            if keys.is_scancode_pressed(Scancode::S) {
-                pause_rendering = false;
-                target_reached = false;
-                updated = true;
-                camera.update_position(0.0, 0.0, 0.05);
-            }
-            if keys.is_scancode_pressed(Scancode::D) {
-                pause_rendering = false;
-                target_reached = false;
-                updated = true;
-                camera.update_position(0.02, 0.0, 0.0);
-            }
-            if keys.is_scancode_pressed(Scancode::LShift) {
-                pause_rendering = false;
-                target_reached = false;
-                updated = true;
-                camera.update_position(0.0, 0.05, 0.0);
-            }
-            if keys.is_scancode_pressed(Scancode::LCtrl) {
-                pause_rendering = false;
-                target_reached = false;
-                updated = true;
-                camera.update_position(0.0, -0.05, 0.0);
-            }
-            if updated {self.raytracer.update_position(camera.position);}
             
+            self.state.fixed_update(&self.sdl2, &keys, &mut self.raytracer);
             
-            // TODO: Implement delta time to ensure extra time isn't wasted here
-            std::thread::sleep(std::time::Duration::new(0, 1_000_000 / 60));
+            let delta_time = self.timer.tick();
+            Timer::await_fps(60, delta_time);            
         }
         println!("Quitting...");
     }

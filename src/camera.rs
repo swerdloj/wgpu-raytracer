@@ -8,6 +8,9 @@ pub struct Camera {
     /// y-axis rotation (degrees)
     pitch: f32,
 
+    /// Vertical field of view in degrees
+    pub v_fov: f32,
+
     /// Current position
     pub position: cgmath::Vector3<f32>,
     /// Facing direction
@@ -20,15 +23,34 @@ impl Camera {
             sensitivity,
             yaw: 0.0,
             pitch: 0.0,
+            v_fov: 100.0,
 
             position: (0.0, 0.0, 5.0).into(),
             target: (0.0, 0.0, -1.0).into(),
         }
     }
 
+    /// Returns true if fov was adjusted within bounds
+    pub fn update_fov(&mut self, df: f32) -> bool {
+        if self.v_fov + df > 160. || self.v_fov + df < 10. {
+            false
+        } else {   
+            self.v_fov += df;
+            true
+        }
+    }
+
     pub fn update_position(&mut self, dx: f32, dy: f32, dz: f32) {
-        self.position += (dx, dy, dz).into();
-        // println!("Position: {:?}", self.position);
+        // TODO: There is probably a more concise way of doing these calculations
+
+        // TODO: Want a 2D rotation so only x/z are moved (only using pitch), but don't want that amount to change based on pitch
+        let forward = cgmath::Vector3::new(dz * -self.target.x, dz * self.target.y, dz * -self.target.z);
+        self.position += forward;
+        
+        let strafe = self.target.cross(cgmath::Vector3::unit_y());
+        self.position += dx * strafe;
+        
+        self.position.y += dy;
     }
 
     pub fn update_angle(&mut self, dx: f32, dy: f32) {

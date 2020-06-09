@@ -9,6 +9,7 @@ build = "build.rs"
 
 [dependencies]
 wgpu = "0.5.0"
+wgpu_glyph = "0.9.0"
 futures = "0.3.5"
 bytemuck = "1.2.0"
 image = "0.23.4"
@@ -16,7 +17,7 @@ cgmath = "0.17.0"
 
 
 [dependencies.sdl2]
-version = "0.34.0"
+version = "0.34.1"
 features = ["raw-window-handle"]
 
 

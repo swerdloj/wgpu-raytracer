@@ -2,3 +2,4 @@
 /images
 SDL2.*
 shadertoolsconfig.json
+/res/font.ttf

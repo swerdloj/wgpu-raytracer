@@ -61,16 +61,6 @@ fn compile_shaders<P: AsRef<path::Path>>(path: P, compiler: &mut shaderc::Compil
                     let mut options = shaderc::CompileOptions::new().unwrap();
                     options.set_source_language(shaderc::SourceLanguage::HLSL);
 
-                    // TODO:
-                    // Enforce file naming such as "shader_name.TYPE.hlsl"
-                    // e.g.: "raytrace.vert.hlsl"
-                    //
-                    // Or, check if `file_name.contains("vert" or "frag") o allow names like "raytrace_frag.hlsl"
-                    //
-                    // This is the easiest way to allow both glsl and hlsl shaders
-                    //
-                    // Also, see: https://docs.rs/shaderc/0.6.2/shaderc/struct.CompileOptions.html#method.set_source_language
-
                     let file_name = entry_path.file_name().unwrap().to_str().unwrap();
 
                     let shader_type = if file_name.contains("frag") {
@@ -101,7 +91,7 @@ fn compile_shaders<P: AsRef<path::Path>>(path: P, compiler: &mut shaderc::Compil
                 }
 
                 _ => {
-                    panic!("Unrecognized shader type at {:?}", entry_path);
+                    // panic!("Unrecognized shader type at {:?}", entry_path);
                 }
             }
         }

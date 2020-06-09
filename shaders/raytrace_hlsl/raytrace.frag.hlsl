@@ -343,14 +343,14 @@ bool scene(Ray ray, float dist_min, float dist_max, inout HitRecord record) {
     Sphere big_sphere = { float3(0, -100.5, -1), 100,
         Material_::create_lambertian(float3(0.8, 0.8, 0.0)),
     };
-    Sphere glass1 = { float3(-1, 0, -1.2), 0.5, 
+    Sphere glass1 = { float3(-1.05, 0, -1), 0.5, 
         Material_::create_dielectric(1.5),
     };
-    Sphere glass2 = { float3(-1, 0, -1.2), -0.45, 
+    Sphere glass2 = { float3(-1.05, 0, -1), -0.45, 
         Material_::create_dielectric(1.5),
     };
-    Sphere metal1 = { {1, 0, -1}, 0.5, 
-        Material_::create_metal(float3(0.8, 0.6, 0.2), 0.3),
+    Sphere metal1 = { {1.05, 0, -1}, 0.5, 
+        Material_::create_metal(float3(0.8, 0.6, 0.2), 0.1),
     };
     Sphere metal2 = { {-1, 0, -1}, 0.5, 
         Material_::create_metal(float3(0.8, 0.8, 0.8), 0.3),
@@ -416,6 +416,8 @@ float3 fire_ray(Ray ray) {
 float4 main(float4 pixel_coords : SV_POSITION) : COLOR0 {
     rand_state = (pixel_coords.xy / window_size) + sample_number * 15.23;
 
+    // TODO: The camera needs to be redone so these can be removed
+    // TODO: Calculate focus distance by querying the distance to scene from camera
     float3 cam_position = {0, 0, 5};
     float3 lookat = {0, 0, -1};
     float3 v_up = {0, 1, 0};
