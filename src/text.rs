@@ -2,67 +2,49 @@ use wgpu_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text};
 
 use crate::system::WGPU;
 
+// For reference, see:
+// https://github.com/hecrj/coffee/blob/master/src/graphics/backend_wgpu/font.rs
+
 pub struct TextRenderer {
-    font: ab_glyph::FontArc,
-    // glyph_brush: wgpu_glyph::GlyphBrush,
-    // ...
-    // TODO: Implement
+    brush: wgpu_glyph::GlyphBrush<()>,
 }
 
-// TODO: The font and glyph brush should be stored for future uses.
-//       This will likely mean creating a new struct for text rendering, and storing a map of fonts for re-use
-pub fn render_text(wgpu: &mut WGPU, view: &wgpu::TextureView, width: u32, height: u32, text: &str) {
-    let font = ab_glyph::FontArc::try_from_slice(include_bytes!("../res/font.ttf"))
-        .unwrap();
+impl TextRenderer {
+    pub fn new<P: AsRef<std::path::Path>>(font_path: P, device: &wgpu::Device, render_format: wgpu::TextureFormat) -> Self {
+        let font_bytes = std::fs::read(font_path)
+            .unwrap();
+        let font = ab_glyph::FontArc::try_from_vec(font_bytes)
+            .unwrap();
 
-    let mut glyph_brush = GlyphBrushBuilder::using_font(font)
-        .build(&wgpu.device, wgpu::TextureFormat::Bgra8Unorm);
+        let brush = GlyphBrushBuilder::using_font(font)
+            .build(device, render_format);
+        
+        Self {
+            brush,
+        }
+    }
 
-    let section = Section {
-        screen_position: (10.0, 10.0),
-        text: vec![Text::new(text).with_scale(25.0)],
-        ..Section::default()
-    };
+    pub fn render_text(&mut self, wgpu: &mut WGPU, target_texture_view: &wgpu::TextureView, target_width: u32, target_height: u32, text: &str) {
+        let section = Section {
+            screen_position: (10.0, 10.0),
+            text: vec![Text::new(text).with_scale(25.0)],
+            ..Section::default()
+        };
 
-    glyph_brush.queue(section);
+        self.brush.queue(section);
 
-    let mut encoder = wgpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("text_encoder"),
-    });
+        let mut encoder = wgpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("text_encoder"),
+        });
 
-    glyph_brush.draw_queued(
-        &wgpu.device,
-        &mut encoder,
-        view,
-        width,
-        height,
-    ).unwrap();
+        self.brush.draw_queued(
+            &wgpu.device,
+            &mut encoder,
+            target_texture_view,
+            target_width,
+            target_height,
+        ).unwrap();
 
-    wgpu.queue.submit(&[encoder.finish()]);
+        wgpu.queue.submit(&[encoder.finish()]);
+    }
 }
-
-/*
-let font = ab_glyph::FontArc::try_from_slice(include_bytes!("SomeFont.ttf"))
-    .expect("Load font");
-
-let mut glyph_brush = GlyphBrushBuilder::using_font(font)
-    .build(&device, render_format);
-
-let section = Section {
-    screen_position: (10.0, 10.0),
-    text: vec![Text::new("Hello wgpu_glyph")],
-    ..Section::default()
-};
-
-glyph_brush.queue(section);
-
-glyph_brush.draw_queued(
-    &device,
-    &mut encoder,
-    &frame.view,
-    frame.width,
-    frame.height,
-);
-
-device.get_queue().submit(&[encoder.finish()]);
-*/

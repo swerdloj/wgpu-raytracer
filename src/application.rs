@@ -50,6 +50,8 @@ impl Runnable for ApplicationState {
                 if self.relative_mouse_mode {
                     // Unfreeze mouse
                     self.toggle_relative_mouse_mode(sdl2);
+                    // Mouse moves while hidden. Move it to center for convenience.
+                    sdl2.center_mouse_in_window();
                 } else {
                     return Message::Quit;
                 }

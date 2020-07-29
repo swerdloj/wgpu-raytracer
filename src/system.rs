@@ -40,6 +40,15 @@ impl SDL2 {
         self.sdl2_context.mouse().set_relative_mouse_mode(on);
     }
 
+    pub fn center_mouse_in_window(&self) {
+        let (width, height) = self.window.size();
+        self.position_mouse_in_window(width / 2, height / 2);
+    }
+
+    pub fn position_mouse_in_window(&self, x: u32, y: u32) {
+        self.sdl2_context.mouse().warp_mouse_in_window(&self.window, x as i32, y as i32);
+    }
+
     // TODO: Allow user to choose between borderless or normal
     pub fn toggle_full_screen(&mut self) -> (u32, u32) {
         match self.window.fullscreen_state() {
@@ -218,10 +227,16 @@ impl System {
         
         // TODO: Finish implementing timer
         self.timer.start();
-
+        
         self.state.init(&self.sdl2);
 
+        let mut text_renderer = crate::text::TextRenderer::new("./res/font.ttf", &self.wgpu.device, TextureFormat::Bgra8Unorm);
+        
+        // FIXME: This probably shouldn't be here
+        // let mut FPS = 60;
         'run: loop {
+            // TODO: Calculate FPS by counting the number of frames rendered in a given second
+
             if !self.raytracer.pause_rendering {
                 if self.raytracer.sample_count() == self.raytracer.target_samples {
                     println!("Target sample count reached.");
@@ -233,7 +248,9 @@ impl System {
                     self.raytracer.render_to_frame(&self.wgpu.device, &self.wgpu.queue, frame_view);
 
                     let (width, height) = self.sdl2.window.size();
-                    crate::text::render_text(&mut self.wgpu, frame_view, width, height, &format!("Sample {}/{}\nFPS: {}", self.raytracer.sample_count(), self.raytracer.target_samples, 1000.0/self.timer.average_delta_time()));
+                    text_renderer.render_text(&mut self.wgpu, frame_view, width, height, 
+                        &format!("Sample {}/{}\n", self.raytracer.sample_count(), self.raytracer.target_samples)
+                    )
                 }
             }
 
@@ -297,6 +314,7 @@ impl System {
             self.state.fixed_update(&self.sdl2, &keys, &mut self.raytracer);
             
             let delta_time = self.timer.tick();
+            // FPS = if delta_time == 0 {60} else {1000 / delta_time};
             Timer::await_fps(60, delta_time);            
         }
         println!("Quitting...");

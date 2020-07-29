@@ -14,10 +14,6 @@ pub struct Timer {
     pub elapsed: u32,
     /// Whether or not the timer is paused
     pub paused: bool,
-
-    /// Used for `average_delta_time` function
-    total_delta_time: u32,
-    total_ticks: u32,
     
     timer: sdl2::TimerSubsystem,
 }
@@ -29,8 +25,6 @@ impl Timer {
             previous_time: 0,
             elapsed: 0,
             paused: true,
-            total_delta_time: 0,
-            total_ticks: 0,
             timer,
         }
     }
@@ -79,17 +73,7 @@ impl Timer {
             self.elapsed += delta_time;
         }
 
-        // TODO: Should average not update if paused?
-        self.total_ticks += 1;
-        self.total_delta_time += delta_time;
-
         delta_time
-    }
-
-    /// Returns the average time in ms between calls to `tick()`
-    // TODO: This is a total average. Should only be over 3 seconds or so
-    pub fn average_delta_time(&self) -> f32 {
-        self.total_delta_time as f32 / self.total_ticks as f32
     }
 
     /// Sets `elapsed` time to 0
