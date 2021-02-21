@@ -19,6 +19,8 @@ mod raytrace;
 mod camera;
 mod application;
 mod text;
+
+#[allow(unused)]
 mod timing;
 
 fn main() {

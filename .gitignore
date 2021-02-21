@@ -2,4 +2,5 @@
 /images
 SDL2.*
 shadertoolsconfig.json
+*.code-workspace
 /res/font.ttf
